@@ -43,6 +43,11 @@
       "rows": 24,
       "color": "optional",
       "unicode": "optional"
+    },
+    "python": {
+      "version": ">=3.10",
+      "modules": ["curses"],
+      "packages": "requirements.txt"
     }
   },
   "data": {
@@ -83,6 +88,7 @@
 | `launch.cwd` | 相对包根目录的工作目录，规范化后必须仍在包内 |
 | `requirements.os` / `arch` | 该包真实支持的系统与架构，不代表平台已测试所有系统 |
 | `requirements.network` | 草案值：`none` 无需网络、`optional` 部分功能联网、`required` 核心玩法需要网络；收录联网游戏的原则已确认 |
+| `requirements.python` | （0.8）Python 游戏的运行环境：`version` 为版本要求（`>=3.10` 形式），`modules` 为必须能导入的模块，`packages` 为相对游戏目录的依赖清单文件（pip requirements 格式）。声明 `packages` 时平台为该游戏创建独立虚拟环境并安装依赖，`{python}` 解析为该环境的解释器；否则解析为满足版本要求的本机解释器。见[游戏安装规范](game-installation.md)第 4 节 |
 | `requirements.terminal` | 最小列数、行数和字符 / 颜色能力需求。（0.7）能力取枚举值：`color` 为 `optional` / `16` / `256` / `truecolor`，`unicode` 为 `optional` / `required`，`keyboard` 为 `basic` / `kitty-optional`，`graphics` 为 `none` / `kitty-optional`；平台据此在大厅提示，不据此阻止启动，窗口尺寸不足时除外 |
 | `data.managed_directory` | 官方托管游戏必须为 `true` |
 | `data.save_mode` | 建议值：`none`、`records`、`progress`、`resume`；描述承诺能力 |
@@ -103,6 +109,8 @@ Q-08 的工程默认方案如下，尚未生成正式 Schema：
 SemVer 的公开接口与版本语义参考[语义化版本规范](https://semver.org/lang/zh-CN/)。协议兼容以明确声明和测试为准，不因为同为 `0.x` 就推定兼容。
 
 ### 2.2 包内入口与运行环境
+
+> **（0.8）已被 U-18 取代**：游戏以源码形式从平台仓库、git 仓库或本地目录获取，任何来源都可以使用 `{python}`，运行环境由 `requirements.python` 声明并由平台准备和检查，见[游戏安装规范](game-installation.md)。下文关于预构建包与“安装包首项必须以 `./` 开头”的要求不再适用；以 `./` 开头的入口仍须位于游戏目录内。
 
 Q-03 已确认采用预构建可运行包。安装包必须包含已准备好的入口和所需文件；支持原生可执行分发包或包含独立语言运行环境的包。Python 等解释型语言游戏须将运行环境一并打包，不能依赖玩家电脑预装相应解释器。
 
