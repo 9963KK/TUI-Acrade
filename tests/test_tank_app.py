@@ -1,4 +1,5 @@
 import curses
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -10,8 +11,7 @@ from tank_battle.app import App
 class TankAppTests(unittest.TestCase):
     def setUp(self):
         patch("tank_battle.app.read_best", return_value=0).start()
-        self.corrupt = patch("tank_battle.app.is_corrupt", return_value=False).start()
-        self.save_mock = patch("tank_battle.app.save_best", return_value=True).start()
+        self.save_mock = patch("tank_battle.app.save_record", return_value=(True, None)).start()
         self.flush_mock = patch("arcade_kit.presentation.curses.doupdate").start()
         self.addCleanup(patch.stopall)
         self.screen = Screen()
@@ -117,12 +117,13 @@ class TankAppTests(unittest.TestCase):
         self.assertEqual(self.app.game.elapsed, 0)
 
     def test_unreadable_record_is_reported_after_saving(self):
-        self.corrupt.return_value = True
+        self.save_mock.return_value = (True, Path("/data/scores.json.corrupt-17"))
         app = App(self.screen, {"TUI_ARCADE_LAUNCHER": "1"})
         app.game.result, app.game.reason = "lose", "HQ was destroyed."
         app.update(0)
         app._draw()
-        self.assertIn("原记录无法读取，已另存为 scores.json.corrupt", self.screen.writes)
+        self.assertIn("原记录无法读取，已另存为 scores.json.corrupt-17", self.screen.writes)
+        self.save_mock.return_value = (True, None)
         app.handle(ord("r"))
         app.game.result, app.game.reason = "lose", "HQ was destroyed."
         app.update(0)
@@ -130,7 +131,7 @@ class TankAppTests(unittest.TestCase):
         self.assertIn("本地最高分 00000", self.screen.writes)
 
     def test_failed_save_still_allows_leaving(self):
-        self.save_mock.return_value = False
+        self.save_mock.return_value = (False, None)
         self.app.game.result = "lose"
         self.app.game.reason = "HQ was destroyed."
         self.app.update(0)

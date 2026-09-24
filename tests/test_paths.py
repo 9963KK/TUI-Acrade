@@ -30,6 +30,13 @@ class PathTests(unittest.TestCase):
         self.assertEqual(base.logs, HOME / "Library/Logs/TUI Arcade")
         self.assertEqual(base.cache, HOME / "Library/Caches/TUI Arcade")
         self.assertEqual(roots({"XDG_DATA_HOME": "/d"}, "macos", HOME).data, Path("/d/tui-arcade"))
+        self.assertEqual(roots({"XDG_STATE_HOME": "/s"}, "macos", HOME).logs, Path("/s/tui-arcade/logs"))
+
+    def test_relative_locations_never_leak_to_games(self):
+        self.assertEqual(roots({"XDG_DATA_HOME": "rel"}, "linux", HOME).data, HOME / ".local/share/tui-arcade")
+        home = roots({"TUI_ARCADE_HOME": "portable"}, "linux", HOME)
+        self.assertTrue(home.data.is_absolute())
+        self.assertEqual(home.data, Path.cwd() / "portable" / "data")
 
     def test_windows_uses_local_app_data(self):
         base = roots({"LOCALAPPDATA": "/L"}, "windows", HOME)

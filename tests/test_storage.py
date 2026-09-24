@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import support  # noqa: F401
-from tank_battle.storage import is_corrupt, read_best, save_best, score_path
+from tank_battle.storage import is_corrupt, read_best, save_best, save_record, score_path
 
 
 class StorageTests(unittest.TestCase):
@@ -29,8 +29,17 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text())["tank_best"], 300)
             self.assertEqual((Path(directory) / "scores.json.corrupt").read_text(), '{"tank_best": "3"}')
             path.write_text("again")
-            self.assertTrue(save_best(10, path))
+            ok, preserved = save_record(10, path)
+            self.assertTrue(ok)
+            self.assertNotEqual(preserved.name, "scores.json.corrupt")
+            self.assertEqual(preserved.read_text(), "again")
             self.assertEqual(len(list(Path(directory).glob("scores.json.corrupt*"))), 2)
+            # 非 UTF-8 字节与极深嵌套同样按损坏处理，不能让游戏崩溃。
+            for raw in (b"\xff\xfe\x00", b"[" * 100000):
+                path.write_bytes(raw)
+                self.assertEqual(read_best(path), 0)
+                self.assertTrue(is_corrupt(path))
+                self.assertTrue(save_best(1, path))
 
     def test_legacy_record_is_imported_once(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -47,6 +56,17 @@ class StorageTests(unittest.TestCase):
             fresh = Path(directory) / "fresh.json"
             self.assertEqual(read_best(fresh), 0)
             self.assertFalse(fresh.exists())
+
+    def test_legacy_record_survives_failed_first_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            legacy = Path(directory) / "old.json"
+            legacy.write_text('{"tank_best": 900}')
+            path = Path(directory) / "new/scores.json"
+            with patch.object(Path, "replace", side_effect=OSError("busy")):
+                self.assertEqual(read_best(path, legacy), 900)
+            self.assertFalse(path.exists())
+            self.assertEqual(read_best(path, legacy), 900)
+            self.assertTrue(path.exists())
 
     def test_write_failure_preserves_existing_record(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -29,19 +29,22 @@ def roots(env=None, system=None, home=None):
     env = os.environ if env is None else env
     system = system_name() if system is None else system
     home = Path.home() if home is None else Path(home)
-    # 整体改到一个目录下，用于测试、便携安装或多份独立环境。
+    # 整体改到一个目录下，用于测试、便携安装或多份独立环境；相对路径按当前目录转为绝对路径，
+    # 因为这些目录会注入给工作目录不同的游戏进程。
     if env.get("TUI_ARCADE_HOME"):
-        base = Path(env["TUI_ARCADE_HOME"])
+        base = Path(env["TUI_ARCADE_HOME"]).absolute()
         return Roots(base / "programs", base / "data", base / "logs", base / "cache")
     if system == "windows":
         local = Path(env.get("LOCALAPPDATA") or home / "AppData" / "Local")
         return Roots(local / "Programs" / "tui-arcade", local / "tui-arcade", local / "tui-arcade" / "logs",
                      local / "tui-arcade" / "cache")
-    xdg = lambda key: env.get(key) and Path(env[key]) / "tui-arcade"
+    # XDG 规范要求忽略相对路径的取值。
+    xdg = lambda key: env.get(key) and Path(env[key]).is_absolute() and Path(env[key]) / "tui-arcade"
     if system == "macos":
-        # 显式设置的 XDG 变量优先，方便习惯 XDG 的用户与测试隔离。
+        # 显式设置的 XDG 变量优先，方便习惯 XDG 的用户与测试隔离；目录结构与 Linux 一致。
         support = xdg("XDG_DATA_HOME") or home / "Library" / "Application Support" / "TUI Arcade"
-        return Roots(support / "programs", support, xdg("XDG_STATE_HOME") or home / "Library" / "Logs" / "TUI Arcade",
+        state = xdg("XDG_STATE_HOME")
+        return Roots(support / "programs", support, state / "logs" if state else home / "Library" / "Logs" / "TUI Arcade",
                      xdg("XDG_CACHE_HOME") or home / "Library" / "Caches" / "TUI Arcade")
     data = xdg("XDG_DATA_HOME") or home / ".local" / "share" / "tui-arcade"
     state = xdg("XDG_STATE_HOME") or home / ".local" / "state" / "tui-arcade"

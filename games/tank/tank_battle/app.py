@@ -9,7 +9,7 @@ from arcade_kit.canvas import Canvas
 
 from .glyphs import TILE_COLORS, Glyphs
 from .rules import Battle, Direction
-from .storage import is_corrupt, read_best, save_best
+from .storage import read_best, save_record
 
 MOVES = {curses.KEY_UP: Direction.UP, curses.KEY_RIGHT: Direction.RIGHT,
          curses.KEY_DOWN: Direction.DOWN, curses.KEY_LEFT: Direction.LEFT,
@@ -31,8 +31,7 @@ class App(Canvas):
         # 从游戏厅启动时 Q 返回大厅，单独运行时 Q 退出。
         self.leave = "返回大厅" if env.get("TUI_ARCADE_LAUNCHER") == "1" else "退出游戏"
         self.running = True
-        # 读不出的旧记录在保存时会另存备份，结算时明确告知，而不是悄悄归零。
-        self.corrupt = is_corrupt()
+        # 读不出的旧记录在保存时会另存备份，结算时明确告知实际的备份文件名，而不是悄悄归零。
         self.best = read_best()
         self.start()
 
@@ -40,7 +39,7 @@ class App(Canvas):
         self.game = Battle()
         self.saved = False
         self.save_failed = False
-        self.preserved = False
+        self.preserved = None
         self.help = False
         self.confirm_leave = False
 
@@ -109,10 +108,10 @@ class App(Canvas):
             self.game.advance(seconds)
         if self.game.result and not self.saved:
             self.best = max(self.best, self.game.score)
-            self.save_failed = not save_best(self.best)
+            saved, preserved = save_record(self.best)
+            self.save_failed = not saved
             self.saved = True
-            self.preserved = self.corrupt and not self.save_failed
-            self.corrupt = self.corrupt and self.save_failed
+            self.preserved = preserved.name if preserved else None
 
     def frame_signature(self):
         game = self.game
@@ -196,7 +195,7 @@ class App(Canvas):
             self.dialog_in_field("任务完成" if game.result == "win" else "战斗结束", [
                 REASONS[game.reason], f"击毁 {game.kills}/12     得分 {game.score:05d}",
                 "记录保存失败，本局仍可继续操作。" if self.save_failed
-                else "原记录无法读取，已另存为 scores.json.corrupt" if self.preserved
+                else f"原记录无法读取，已另存为 {self.preserved}" if self.preserved
                 else f"本地最高分 {self.best:05d}",
                 f"Enter / R 再来一局    Q {self.leave}"])
         elif game.paused:
