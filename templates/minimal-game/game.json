@@ -1,0 +1,21 @@
+{
+  "manifest_version": 1,
+  "id": "minimal-game",
+  "name": "猜数字（样例）",
+  "version": "0.1.0",
+  "description": "最小接入样例：标准库、数据目录与退出码。",
+  "authors": ["TUI Arcade contributors"],
+  "launch": {
+    "argv": ["{python}", "main.py"],
+    "cwd": "."
+  },
+  "requirements": {
+    "os": ["macos", "linux", "windows"],
+    "arch": ["x86_64", "arm64"],
+    "network": "none",
+    "terminal": {"columns": 40, "rows": 10, "color": "optional", "unicode": "optional"}
+  },
+  "data": {"managed_directory": true, "save_mode": "records"},
+  "documentation": {"readme": "README.md", "license": "LICENSE", "credits": "CREDITS.md"},
+  "metadata": {"presentation": {"name_en": "GUESS", "tags": ["1 分钟", "单人", "样例"]}}
+}

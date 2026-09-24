@@ -1,0 +1,57 @@
+{
+  "manifest_version": 1,
+  "id": "tank",
+  "name": "坦克大战",
+  "version": "0.2.0",
+  "description": "守住基地，等待援军。",
+  "authors": ["TUI Arcade contributors"],
+  "launch": {
+    "argv": ["{python}", "-m", "tank_battle"],
+    "cwd": "."
+  },
+  "requirements": {
+    "os": ["macos", "linux"],
+    "arch": ["x86_64", "arm64"],
+    "network": "none",
+    "terminal": {
+      "columns": 80,
+      "rows": 24,
+      "color": "optional",
+      "unicode": "optional"
+    }
+  },
+  "data": {
+    "managed_directory": true,
+    "save_mode": "records"
+  },
+  "documentation": {
+    "readme": "README.md",
+    "license": "LICENSE",
+    "credits": "CREDITS.md"
+  },
+  "metadata": {
+    "presentation": {
+      "name_en": "TANK BATTLE",
+      "tags": ["3 分钟", "单人", "基地防守"],
+      "cover": {
+        "background": "#1c1c1c",
+        "rows": [
+          "BB...v...SS",
+          "bb...|...SS",
+          "..~~.^.BB..",
+          "....BHb...."
+        ],
+        "cells": {
+          "B": {"text": "▝▀", "ascii": "##", "fg": "#af875f", "bg": "#444444"},
+          "b": {"text": "▀▘", "ascii": "##", "fg": "#af875f", "bg": "#444444"},
+          "S": {"text": "▗▖", "ascii": "[]", "fg": "#dadada", "bg": "#808080"},
+          "~": {"text": "~ ", "ascii": "~~", "fg": "#87afd7", "bg": "#005f87"},
+          "H": {"text": "HQ", "ascii": "HQ", "fg": "#1c1c1c", "bg": "#d7af5f", "bold": true},
+          "^": {"text": "▟▙", "ascii": "^P", "fg": "#9ece6a", "bold": true},
+          "v": {"text": "▜▛", "ascii": "v!", "fg": "#f7768e", "bold": true},
+          "|": {"text": "▝▘", "ascii": "* ", "fg": "#9ece6a"}
+        }
+      }
+    }
+  }
+}
