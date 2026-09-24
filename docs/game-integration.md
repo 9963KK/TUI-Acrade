@@ -79,7 +79,7 @@
 | `name` / `description` | 玩家可读文本，展示时不得执行其中的终端控制序列 |
 | `version` | 游戏发布版本；发布后不可用不同内容覆盖同版本同平台资产 |
 | `authors` | 非空作者或团队名称数组 |
-| `launch.argv` | 非空字符串数组，首项为包内可执行入口，不经过 Shell 解释。（0.7）安装包的首项必须以 `./` 开头并解析到包内；开发来源（仓库 `games/` 或 `TUI_ARCADE_DEV_GAMES`）可用 `{python}` 表示平台自身的解释器从源码运行，安装包不得使用；`{dir}` 替换为游戏文件夹 |
+| `launch.argv` | 非空字符串数组，首项为包内可执行入口，不经过 Shell 解释。（0.7）安装包的首项必须以 `./` 开头并解析到包内；开发来源（平台可执行文件所在仓库的 `games/`，或 `TUI_ARCADE_DEV_GAMES`；不从当前目录发现）可用 `{python}` 从源码运行，解释器依次取 `TUI_ARCADE_PYTHON`、`PATH` 中的 `python3`、`python`，安装包不得使用；`{dir}` 在参数中替换为游戏文件夹。首项以 `./` 开头时不得含 `{`、`}`，按原样拼接到包根目录，包根目录取清单所在目录而不跟随清单文件的符号链接，已安装来源拒绝符号链接形式的清单 |
 | `launch.cwd` | 相对包根目录的工作目录，规范化后必须仍在包内 |
 | `requirements.os` / `arch` | 该包真实支持的系统与架构，不代表平台已测试所有系统 |
 | `requirements.network` | 草案值：`none` 无需网络、`optional` 部分功能联网、`required` 核心玩法需要网络；收录联网游戏的原则已确认 |
@@ -142,7 +142,7 @@ Q-03 已确认采用预构建可运行包。安装包必须包含已准备好的
 
 （0.7）实现要点：
 
-- **POSIX**：交接前用 termios 保存终端属性，游戏退出后以 `TCSAFLUSH` 恢复，同时丢弃残留按键。平台**不得**用 `SIG_IGN` 忽略 SIGINT：被忽略的信号会跨 `exec` 继承给游戏，游戏将收不到 Ctrl-C；应安装空处理函数，它在 `exec` 时自动恢复为默认行为。
+- **POSIX**：交接前用 termios 保存终端属性，游戏退出后以 `TCSAFLUSH`（macOS `TIOCSETAF` / Linux `TCSETSF`）恢复，同时丢弃残留按键。平台**不得**用 `SIG_IGN` 忽略 SIGINT：被忽略的信号会跨 `exec` 继承给游戏，游戏将收不到 Ctrl-C；应捕获信号（Go 的 `signal.Notify`），被捕获的信号在 `exec` 时自动恢复为默认行为。Bubble Tea 在释放终端期间忽略它收到的 SIGINT，因此平台不会随游戏一起退出。
 - **兜底复位**：游戏退出后平台输出复位序列：SGR 复位、关闭鼠标上报与括号粘贴、弹出 Kitty 键盘协议（`CSI < u`）、显示光标、离开备用屏幕；然后重新读取窗口尺寸并整屏重画大厅。
 - **Windows**：用 `GetConsoleMode` / `SetConsoleMode` 保存并恢复控制台输入、输出模式，同时恢复输出代码页（`SetConsoleOutputCP`）与 `ENABLE_VIRTUAL_TERMINAL_PROCESSING`；平台用 `SetConsoleCtrlHandler` 吞掉游戏运行期间的 Ctrl-C，由游戏处理。
 - **受控终止**：可采用“连续两次 Ctrl-C 且 N 秒内游戏未退出时，平台先发 SIGTERM 再发 SIGKILL（Windows 为 `TerminateProcess`）”，这不需要读取终端输入。
@@ -224,6 +224,6 @@ Q-03 已确认采用预构建可运行包。安装包必须包含已准备好的
 | GI-12 | 游戏声明不提供存档 | 允许安装与游玩，不强制创建存档或调用保存接口 |
 | GI-13 | 协议版本超出支持集合 | 明确拒绝相关操作，不删除本地程序或数据；仍可使用兼容的本地游戏 |
 
-（0.7）当前实现的自动化覆盖（macOS / Linux）：GI-02、GI-04、GI-07 见 `tests/test_terminal.py` 的真实终端测试；GI-03、GI-13 见 `tests/test_catalog.py`；GI-05 见最小样例写入平台分配目录的终端测试。GI-01 通过拆出 `arcade_kit` 并取消 `PYTHONPATH` 注入满足。GI-06、GI-08、GI-11 依赖 M2 安装包，GI-10 依赖 Windows 实现，尚未覆盖。
+（0.7）当前实现的自动化覆盖（在 macOS 上运行；Linux 与 Windows 仅交叉编译）：GI-02、GI-04（含真实 Ctrl-C 与异常退出码）、GI-07 见 `tests/test_terminal.py` 的真实终端测试；GI-03、GI-13 见 `platform/internal/catalog` 与 `internal/launcher` 的 Go 测试；GI-05 见最小样例写入平台分配目录的终端测试。GI-01 部分满足：平台不再注入 `PYTHONPATH`，但坦克大战在源码布局下仍从仓库 `kit/` 找到 `arcade_kit`，须待 M2 的打包流程把工具包打入安装包后才完全满足。GI-06、GI-08、GI-11 依赖 M2 安装包，GI-10 依赖 Windows 实机验证，尚未覆盖。
 
 </spec-entry>

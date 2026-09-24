@@ -21,7 +21,7 @@
 
 ## 运行
 
-- 从游戏厅：`python3 -m arcade --game tank`
+- 从游戏厅：在仓库根目录运行 `./play.sh --game tank`
 - 单独运行：`cd games/tank && python3 -m tank_battle`
 
 需要 80 × 24 以上的 UTF-8 终端。使用 Python 标准库 `curses`，因此当前只支持 macOS 与 Linux；Windows 需要改用其它终端后端后才能声明支持。

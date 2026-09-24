@@ -10,6 +10,6 @@
 ## 运行
 
 - 单独运行：`python3 main.py`
-- 在游戏厅中调试：`TUI_ARCADE_DEV_GAMES="$PWD/.." python3 -m arcade`（在仓库根目录执行，`TUI_ARCADE_DEV_GAMES` 指向包含游戏文件夹的目录）
+- 在游戏厅中调试：在仓库根目录运行 `TUI_ARCADE_DEV_GAMES="$PWD/templates" ./play.sh`（`TUI_ARCADE_DEV_GAMES` 指向包含游戏文件夹的目录）
 
 `{python}` 启动方式只用于开发来源；正式安装包必须自带运行环境，`launch.argv[0]` 指向包内入口（如 `./bin/guess`）。
