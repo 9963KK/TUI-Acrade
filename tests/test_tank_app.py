@@ -194,7 +194,7 @@ class TankAppTests(unittest.TestCase):
         self.assertEqual(game.elapsed, elapsed)
         self.assertEqual(game.tiles, tiles)
         self.app.draw()
-        self.assertIn(" 选择关卡 2/3 ", self.screen.writes)
+        self.assertIn(f" 选择关卡 2/{len(LEVELS)} ", self.screen.writes)
         self.app.handle(27)
         self.assertIs(self.app.game, game)
         self.assertFalse(self.app.selecting)
@@ -211,7 +211,7 @@ class TankAppTests(unittest.TestCase):
         self.app.handle(13)
         self.assertEqual(self.app.game.level_number, len(LEVELS))
         self.assertFalse(self.app.selecting)
-        self.assertEqual(self.app.game.TARGET, 20)
+        self.assertEqual(self.app.game.TARGET, LEVELS[-1].target)
         self.assertEqual(self.app.game.elapsed, 0)
         self.assertEqual(self.app.game.lives, 3)
 
@@ -328,8 +328,8 @@ class TankAppTests(unittest.TestCase):
                 self.app.handle(curses.KEY_DOWN)
             self.assertEqual(self.app.selection, len(expanded) - 1)
             self.app.draw()
-            self.assertIn(" 选择关卡 12/12 ", self.screen.writes)
-            self.assertTrue(any(text.startswith("> 12") for text in self.screen.writes))
+            self.assertIn(f" 选择关卡 {len(expanded)}/{len(expanded)} ", self.screen.writes)
+            self.assertTrue(any(text.startswith(f"> {len(expanded):02}") for text in self.screen.writes))
             self.assertFalse(any(text.startswith("  01") for text in self.screen.writes))
             self.assertTrue(all(0 <= y < 24 for y, _, _ in self.screen.positions))
 

@@ -9,6 +9,9 @@ import tempfile
 import time
 import unittest
 
+import support  # noqa: F401
+from tank_battle.levels import LEVELS
+
 if os.name == "posix":
     import pty
     import termios
@@ -57,8 +60,9 @@ class TankTerminalTests(unittest.TestCase):
         self.fail(f"Missing terminal text {text!r}; output: {output!r}")
 
     def send(self, keys):
-        # 排空上一帧，随后只检查按键产生的新画面。
-        while select.select([self.master], [], [], 0.05)[0]:
+        # 排空上一帧，但密集战斗持续输出时也要及时发送按键。
+        deadline = time.monotonic() + 0.25
+        while time.monotonic() < deadline and select.select([self.master], [], [], 0.05)[0]:
             os.read(self.master, 65536)
         os.write(self.master, keys.encode())
 
@@ -125,6 +129,27 @@ class TankTerminalTests(unittest.TestCase):
         self.expect("渡口防线")
         self.quit()
         self.assertEqual(len(list(Path(self.data.name).rglob("scores.json"))), 1)
+
+    def test_scroll_to_final_level_and_return_to_first(self):
+        self.start()
+        self.expect(LEVELS[0].name)
+        self.send("l")
+        self.expect("选择关卡")
+        self.send("s" * (len(LEVELS) - 1))
+        # curses 只输出变化字符，标题的固定文字不会随滚动再次输出。
+        self.expect(f"> {len(LEVELS):02}")
+        self.send("\r")
+        self.expect(LEVELS[-1].name)
+        self.send("?")
+        self.expect(f"消灭 {LEVELS[-1].target} 辆敌军")
+        self.send("\r")
+        self.send("l")
+        self.expect("选择关卡")
+        self.send("w" * (len(LEVELS) - 1))
+        self.expect("> 01")
+        self.send("\r")
+        self.expect(LEVELS[0].name)
+        self.quit()
 
 
 if __name__ == "__main__":

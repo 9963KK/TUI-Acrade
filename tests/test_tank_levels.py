@@ -134,6 +134,21 @@ class LevelTests(unittest.TestCase):
             self.assertEqual(first.bullets, second.bullets)
             self.assertEqual(first.tiles, second.tiles)
 
+    def test_difficulty_increases_without_exceeding_hud_capacity(self):
+        for previous, current in zip(LEVELS, LEVELS[1:]):
+            self.assertGreaterEqual(current.target, previous.target)
+            self.assertLess(current.spawn_interval, previous.spawn_interval)
+            self.assertGreaterEqual(current.max_enemies, previous.max_enemies)
+            self.assertTrue(all(new <= old for new, old in zip(current.move_delay, previous.move_delay)))
+            self.assertTrue(all(new < old for new, old in zip(current.fire_delay, previous.fire_delay)))
+        self.assertTrue(all(level.target <= 24 for level in LEVELS))
+
+    def test_river_valley_has_three_crossings_and_no_edge_bypass(self):
+        tiles = get_level(5).make_tiles()
+        for row in (5, 6, 10, 11):
+            crossings = {x for x in range(WIDTH) if tiles.get((x, row)) != "water"}
+            self.assertEqual(crossings, {6, 7, 14, 15, 21, 22})
+
 
 if __name__ == "__main__":
     unittest.main()

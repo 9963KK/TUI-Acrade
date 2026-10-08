@@ -25,7 +25,7 @@ scripts/install-tplay.sh
 
 | 游戏 | 说明 |
 | --- | --- |
-| [坦克大战](games/tank/README.md) | 3 关单人基地防守，每关最多 3 分钟；L 选关、WASD 移动、空格射击、F 自动连射、Q 返回大厅 |
+| [坦克大战](games/tank/README.md) | 6 关单人基地防守，每关最多 3 分钟；L 选关、WASD 移动、空格射击、F 自动连射、Q 返回大厅 |
 | [猜数字（样例）](templates/minimal-game/README.md) | 最小接入样例，默认不上架；开发新游戏时从这里复制起步 |
 
 ## 接入游戏
