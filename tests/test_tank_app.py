@@ -6,6 +6,7 @@ from unittest.mock import patch
 from support import Screen, colors
 
 from tank_battle.app import App
+from tank_battle.levels import LEVELS
 
 
 class TankAppTests(unittest.TestCase):
@@ -176,6 +177,161 @@ class TankAppTests(unittest.TestCase):
         self.app.draw()
         self.app.help = False
         self.assertTrue(self.app.draw())
+
+    def finish(self, result="win"):
+        self.app.game.result = result
+        self.app.game.reason = ("All enemy tanks eliminated!" if result == "win"
+                                else "HQ was destroyed.")
+        self.app.update(0)
+
+    def test_level_selection_freezes_battle_and_cancel_preserves_progress(self):
+        self.app.update(0.1)
+        game = self.app.game
+        elapsed, tiles = game.elapsed, dict(game.tiles)
+        self.app.handle(ord("L"))
+        self.app.handle(curses.KEY_DOWN)
+        self.app.update(10)
+        self.assertEqual(game.elapsed, elapsed)
+        self.assertEqual(game.tiles, tiles)
+        self.app.draw()
+        self.assertIn(" 选择关卡 2/3 ", self.screen.writes)
+        self.app.handle(27)
+        self.assertIs(self.app.game, game)
+        self.assertFalse(self.app.selecting)
+        self.app.update(0.1)
+        self.assertGreater(game.elapsed, elapsed)
+
+    def test_selector_bounds_and_start_selected_level(self):
+        self.app.open_levels()
+        self.app.handle(ord("w"))
+        self.assertEqual(self.app.selection, 0)
+        for _ in range(10):
+            self.app.handle(ord("s"))
+        self.assertEqual(self.app.selection, len(LEVELS) - 1)
+        self.app.handle(13)
+        self.assertEqual(self.app.game.level_number, len(LEVELS))
+        self.assertFalse(self.app.selecting)
+        self.assertEqual(self.app.game.TARGET, 20)
+        self.assertEqual(self.app.game.elapsed, 0)
+        self.assertEqual(self.app.game.lives, 3)
+
+    def test_cancelling_selector_preserves_pause(self):
+        self.app.handle(ord("p"))
+        self.app.handle(ord("l"))
+        self.app.handle(ord("q"))
+        self.assertTrue(self.app.game.paused)
+        self.assertTrue(self.app.running)
+        self.assertFalse(self.app.selecting)
+
+    def test_win_advances_and_retry_stays_on_current_level(self):
+        for number in range(1, len(LEVELS)):
+            self.app.start(number)
+            self.app.game.tiles.clear()
+            self.finish()
+            self.app.handle(ord("r"))
+            self.assertEqual(self.app.game.level_number, number)
+            self.assertTrue(self.app.game.tiles)
+            self.finish()
+            self.app.handle(10)
+            self.assertEqual(self.app.game.level_number, number + 1)
+            self.assertIsNone(self.app.game.result)
+            self.assertFalse(self.app.saved)
+            self.assertEqual(self.app.game.score, 0)
+            self.assertEqual(self.app.game.lives, 3)
+
+    def test_defeat_retries_current_level(self):
+        self.app.start(2)
+        self.finish("lose")
+        self.app.handle(10)
+        self.assertEqual(self.app.game.level_number, 2)
+        self.assertIsNone(self.app.game.result)
+
+    def test_final_level_returns_to_selector_and_can_be_replayed(self):
+        self.app.start(len(LEVELS))
+        self.finish()
+        self.app.draw()
+        self.assertIn(" 最终关完成 ", self.screen.writes)
+        self.app.handle(10)
+        self.assertTrue(self.app.selecting)
+        self.assertEqual(self.app.selection, len(LEVELS) - 1)
+        self.app.handle(27)
+        self.assertEqual(self.app.game.result, "win")
+        self.app.handle(ord("r"))
+        self.assertEqual(self.app.game.level_number, len(LEVELS))
+        self.assertIsNone(self.app.game.result)
+
+    def test_finished_game_can_select_any_level_without_losing_best(self):
+        self.app.game.kills = 12
+        self.finish()
+        best = self.app.best
+        self.app.handle(ord("l"))
+        self.app.handle(ord("s"))
+        self.app.handle(10)
+        self.assertEqual(self.app.game.level_number, 2)
+        self.assertEqual(self.app.best, best)
+        self.save_mock.assert_called_once()
+
+    def test_selector_frames_are_static_and_keys_do_not_control_tank(self):
+        self.app.open_levels()
+        self.app.handle(ord("f"))
+        self.app.handle(ord(" "))
+        self.assertFalse(self.app.game.auto_fire)
+        self.assertFalse(self.app.game.bullets)
+        self.assertTrue(self.app.draw())
+        self.app.update(10)
+        self.assertFalse(self.app.draw())
+        self.app.handle(curses.KEY_RIGHT)
+        self.assertTrue(self.app.draw())
+
+    def test_every_level_renders_target_help_and_results(self):
+        for number, level in enumerate(LEVELS, 1):
+            with self.subTest(number=number):
+                self.app.start(number)
+                self.app.draw()
+                self.assertIn(f"第 {number}/{len(LEVELS)} 关  {level.name}", self.screen.writes)
+                self.app.handle(ord("?"))
+                self.app.draw()
+                self.assertIn(f"消灭 {level.target} 辆敌军或守满 3 分钟获胜。", self.screen.writes)
+                self.app.handle(27)
+                self.app.game.kills = level.target
+                self.finish()
+                self.app.draw()
+                self.assertIn(f"击毁 {level.target}/{level.target}     得分 {self.app.game.score:05d}",
+                              self.screen.writes)
+
+    def test_all_level_dialogs_fit_smallest_supported_window(self):
+        for number in range(1, len(LEVELS) + 1):
+            for height, width in ((24, 80), (40, 120)):
+                self.screen.height, self.screen.width = height, width
+                self.app.start(number)
+                for rich in (False, True):
+                    with colors():
+                        self.app.theme.setup({} if rich else {"ARCADE_ASCII": "1"})
+                        self.app.open_levels()
+                        self.app.draw()
+                        ox, oy = self.app.origin()
+                        borders = [(y, x) for y, x, text in self.screen.positions if text.startswith(("╭", "+"))]
+                        self.assertTrue(all(oy + 2 <= y <= oy + 22 and x + 54 <= ox + 61
+                                            for y, x in borders))
+                        self.app.handle(27)
+                        self.app.help = True
+                        self.app.draw()
+                        self.app.help = False
+                        self.finish()
+                        self.app.draw()
+
+    def test_selector_scrolls_when_more_levels_are_added(self):
+        expanded = LEVELS * 4
+        with patch("tank_battle.app.LEVELS", expanded):
+            self.app.open_levels()
+            for _ in expanded:
+                self.app.handle(curses.KEY_DOWN)
+            self.assertEqual(self.app.selection, len(expanded) - 1)
+            self.app.draw()
+            self.assertIn(" 选择关卡 12/12 ", self.screen.writes)
+            self.assertTrue(any(text.startswith("> 12") for text in self.screen.writes))
+            self.assertFalse(any(text.startswith("  01") for text in self.screen.writes))
+            self.assertTrue(all(0 <= y < 24 for y, _, _ in self.screen.positions))
 
 
 if __name__ == "__main__":

@@ -1,9 +1,11 @@
 import math
 import random
+from itertools import product
 import unittest
 
 import support  # noqa: F401
 from tank_battle.rules import Battle, Bullet, Direction, Tank
+from tank_battle.levels import LEVELS
 
 
 class BattleTests(unittest.TestCase):
@@ -190,8 +192,8 @@ class BattleTests(unittest.TestCase):
 
     def test_generated_playthroughs_preserve_invariants_and_end_within_limit(self):
         rng = random.Random(5)
-        for seed in range(10):
-            game = Battle(seed=seed)
+        for level, seed in product(range(1, len(LEVELS) + 1), range(10)):
+            game = Battle(seed=seed, level=level)
             game.command("auto")
             for _ in range(1800):
                 game.command(rng.choice(list(Direction)))
@@ -199,14 +201,14 @@ class BattleTests(unittest.TestCase):
                 tanks = [game.player, *game.enemies]
                 positions = [(tank.x, tank.y) for tank in tanks]
                 self.assertEqual(len(positions), len(set(positions)))
-                self.assertLessEqual(len(game.enemies), 4)
-                self.assertLessEqual(game.spawned, 12)
+                self.assertLessEqual(len(game.enemies), game.level.max_enemies)
+                self.assertLessEqual(game.spawned, game.TARGET)
                 self.assertTrue(all(0 <= x < game.WIDTH and 0 <= y < game.HEIGHT for x, y in positions))
                 self.assertTrue(all(pos not in game.tiles and pos != game.BASE for pos in positions))
                 if game.result:
                     break
             self.assertIsNotNone(game.result)
-            self.assertLessEqual(game.elapsed, 180)
+            self.assertLessEqual(game.elapsed, game.LIMIT)
 
 
 if __name__ == "__main__":

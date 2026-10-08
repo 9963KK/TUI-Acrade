@@ -6,6 +6,8 @@ from enum import Enum
 import math
 import random
 
+from .levels import BASE, HEIGHT, HOME, SPAWNS, WIDTH, get_level
+
 
 class Direction(Enum):
     UP = (0, -1)
@@ -32,18 +34,21 @@ class Bullet:
 
 
 class Battle:
-    WIDTH = 29
-    HEIGHT = 19
+    WIDTH = WIDTH
+    HEIGHT = HEIGHT
     LIMIT = 180.0
     TARGET = 12
     STEP = 0.05
-    BASE = (14, 18)
-    HOME = (12, 17)
-    SPAWNS = ((2, 0), (14, 0), (26, 0))
+    BASE = BASE
+    HOME = HOME
+    SPAWNS = SPAWNS
 
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, level=1):
         self.rng = random.Random(seed)
-        self.tiles = self._make_map()
+        self.level = get_level(level)
+        self.level_number = level
+        self.TARGET = self.level.target
+        self.tiles = self.level.make_tiles()
         self.player = Tank(*self.HOME)
         self.enemies = []
         self.bullets = []
@@ -59,21 +64,6 @@ class Battle:
         self.result = None
         self.reason = ""
         self._accumulator = 0.0
-
-    def _make_map(self):
-        tiles = {}
-        for y in (3, 4, 8, 9, 13, 14):
-            for x in range(2, 27):
-                if x % 6 in (2, 3, 4):
-                    tiles[x, y] = "brick"
-        for x in (8, 20):
-            for y in (6, 7, 11, 12):
-                tiles[x, y] = "steel"
-        for x in (5, 6, 22, 23):
-            tiles[x, 10] = "water"
-        for pos in ((13, 17), (14, 17), (15, 17), (13, 18), (15, 18)):
-            tiles[pos] = "brick"
-        return tiles
 
     @property
     def remaining(self):
@@ -123,12 +113,12 @@ class Battle:
             tank.cooldown = max(0, tank.cooldown - self.STEP)
             tank.move_wait = max(0, tank.move_wait - self.STEP)
         self.spawn_wait -= self.STEP
-        if self.spawn_wait <= 0 and self.spawned < self.TARGET and len(self.enemies) < 4:
+        if self.spawn_wait <= 0 and self.spawned < self.TARGET and len(self.enemies) < self.level.max_enemies:
             for x, y in self.rng.sample(self.SPAWNS, len(self.SPAWNS)):
                 if not self._occupied(x, y):
                     self.enemies.append(Tank(x, y, Direction.DOWN, 1.0, 0.5))
                     self.spawned += 1
-                    self.spawn_wait = 4.0
+                    self.spawn_wait = self.level.spawn_interval
                     break
         if self.auto_fire:
             self._fire(self.player, True)
@@ -139,7 +129,7 @@ class Battle:
                 target = (self.player.x, self.player.y) if self.rng.random() < 0.35 else self.BASE
                 enemy.direction = self._toward(enemy, target)
                 self._move(enemy)
-                enemy.move_wait = self.rng.uniform(0.4, 0.7)
+                enemy.move_wait = self.rng.uniform(*self.level.move_delay)
             self._fire(enemy, False)
         if not self.result:
             self._step_bullets()
@@ -185,7 +175,7 @@ class Battle:
     def _fire(self, tank, friendly):
         if tank.cooldown > 0 or self.result or (not friendly and tank not in self.enemies):
             return
-        tank.cooldown = 0.3 if friendly else self.rng.uniform(1.1, 1.8)
+        tank.cooldown = 0.3 if friendly else self.rng.uniform(*self.level.fire_delay)
         dx, dy = tank.direction.value
         bullet = Bullet(tank.x + dx, tank.y + dy, tank.direction, friendly)
         for other in list(self.bullets):
@@ -260,7 +250,7 @@ class Battle:
             self.kills += 1
             self.effects.append((tank.x, tank.y, 0.3))
             if self.kills >= self.TARGET:
-                self._finish("win", "All 12 enemy tanks eliminated!")
+                self._finish("win", "All enemy tanks eliminated!")
 
     def _finish(self, result, reason):
         self.result = result

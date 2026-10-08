@@ -8,6 +8,7 @@ import time
 from arcade_kit.canvas import Canvas
 
 from .glyphs import TILE_COLORS, Glyphs
+from .levels import LEVELS
 from .rules import Battle, Direction
 from .storage import read_best, save_record
 
@@ -16,7 +17,7 @@ MOVES = {curses.KEY_UP: Direction.UP, curses.KEY_RIGHT: Direction.RIGHT,
          ord("w"): Direction.UP, ord("d"): Direction.RIGHT,
          ord("s"): Direction.DOWN, ord("a"): Direction.LEFT}
 REASONS = {"Reinforcements arrived. HQ is safe!": "援军抵达，基地守住了！",
-           "All 12 enemy tanks eliminated!": "12 辆敌军已全部消灭！",
+           "All enemy tanks eliminated!": "敌军已全部消灭！",
            "HQ was destroyed.": "基地被摧毁。",
            "No tanks remaining.": "坦克全部损失。"}
 
@@ -33,15 +34,22 @@ class App(Canvas):
         self.running = True
         # 读不出的旧记录在保存时会另存备份，结算时明确告知实际的备份文件名，而不是悄悄归零。
         self.best = read_best()
-        self.start()
+        self.start(1)
 
-    def start(self):
-        self.game = Battle()
+    def start(self, level=None):
+        # 重试保留当前关卡；下一关与选关显式传入编号，每关独立计分。
+        self.game = Battle(level=self.game.level_number if level is None else level)
         self.saved = False
         self.save_failed = False
         self.preserved = None
         self.help = False
         self.confirm_leave = False
+        self.selecting = False
+        self.selection = self.game.level_number - 1
+
+    def open_levels(self):
+        self.selecting = True
+        self.selection = self.game.level_number - 1
 
     @property
     def glyphs(self):
@@ -67,6 +75,16 @@ class App(Canvas):
             if key in (ord("q"), 27):
                 self.running = False
             return
+        if self.selecting:
+            if key in (curses.KEY_UP, curses.KEY_LEFT, ord("w"), ord("a")):
+                self.selection = max(0, self.selection - 1)
+            elif key in (curses.KEY_DOWN, curses.KEY_RIGHT, ord("s"), ord("d")):
+                self.selection = min(len(LEVELS) - 1, self.selection + 1)
+            elif key in (10, 13):
+                self.start(self.selection + 1)
+            elif key in (27, ord("q"), ord("l")):
+                self.selecting = False
+            return
         if self.help:
             if key in (27, ord("?"), ord("h"), ord("q"), 10, 13):
                 self.help = False
@@ -80,9 +98,20 @@ class App(Canvas):
         if key in (ord("?"), ord("h")):
             self.help = True
             return
+        if key == ord("l"):
+            self.open_levels()
+            return
         if self.game.result:
-            if key in (ord("r"), 10, 13):
+            if key == ord("r"):
                 self.start()
+            elif key in (10, 13):
+                if self.game.result == "win":
+                    if self.game.level_number < len(LEVELS):
+                        self.start(self.game.level_number + 1)
+                    else:
+                        self.open_levels()
+                else:
+                    self.start()
             elif key in (ord("q"), 27):
                 self.running = False
             return
@@ -104,7 +133,7 @@ class App(Canvas):
         if height < self.MIN_HEIGHT or width < self.MIN_WIDTH:
             self.game.paused = True
             return
-        if not self.help and not self.confirm_leave:
+        if not self.help and not self.confirm_leave and not self.selecting:
             self.game.advance(seconds)
         if self.game.result and not self.saved:
             self.best = max(self.best, self.game.score)
@@ -116,7 +145,8 @@ class App(Canvas):
     def frame_signature(self):
         game = self.game
         tank_view = lambda tank: (tank.x, tank.y, tank.direction)
-        return (self.screen.getmaxyx(), self.help, self.confirm_leave, self.best, self.save_failed, self.preserved,
+        return (self.screen.getmaxyx(), self.help, self.confirm_leave, self.selecting, self.selection,
+                self.best, self.save_failed, self.preserved, game.level_number,
                 game.remaining, game.lives, game.kills, game.score, game.result,
                 game.reason, game.paused, game.auto_fire, math.ceil(game.shield),
                 tank_view(game.player), tuple(map(tank_view, game.enemies)),
@@ -141,15 +171,17 @@ class App(Canvas):
             self.text(5, 1, f"放大窗口后按 P 继续；Q {self.leave}。")
             return
         self.draw_battle(height, width)
-        if self.help:
+        if self.selecting:
+            self.draw_levels()
+        elif self.help:
             self.dialog_in_field("出击手册", [
                 "WASD / 方向键：移动并转向", "空格 / J：开炮    F：切换自动连射",
-                f"P / Esc：暂停    Q：{self.leave}",
+                "P / Esc：暂停    L：选择关卡",
                 "绿色坦克是你，红色是敌军，HQ 是基地。",
                 "3 条命；复活后有 3 秒护盾，期间免伤。",
-                "消灭 12 辆敌军或守满 3 分钟即可获胜。",
+                f"消灭 {self.game.TARGET} 辆敌军或守满 3 分钟获胜。",
                 "砖墙可破坏；水域可射穿；友军炮不伤 HQ。",
-                "Enter / Esc 关闭说明，继续游戏"])
+                "Enter / Esc / Q 关闭说明，继续游戏"])
         elif self.confirm_leave:
             self.dialog_in_field(self.leave, ["结束本局？当前战绩不会保存。", "Enter 确认    Esc 继续游戏"])
 
@@ -162,13 +194,24 @@ class App(Canvas):
         ox, oy = self.origin()
         self.dialog(oy + 2 + (21 - len(lines) * 2 - 3) // 2, ox + 4, title, lines)
 
+    def draw_levels(self):
+        # 最多显示 5 项，后续增加关卡时仍能在 80 x 24 的窗口内选关。
+        first = max(0, min(self.selection - 2, len(LEVELS) - 5))
+        lines = [f"{'>' if index == self.selection else ' '} {index + 1:02}  {level.name}    敌军 {level.target}"
+                 for index, level in enumerate(LEVELS) if first <= index < first + 5]
+        lines.extend((LEVELS[self.selection].description,
+                      "确认后开始新局，当前关卡进度将重置。",
+                      "W S / 方向键选择；Enter 开始；Esc 返回"))
+        self.dialog_in_field(f"选择关卡 {self.selection + 1}/{len(LEVELS)}", lines)
+
     def draw_battle(self, height, width):
         game = self.game
         glyphs = self.glyphs
         ox, oy = self.origin()
         self.text(oy, ox + 2, "TANK BATTLE", "accent", True)
         self.text(oy, ox + 14, "坦克大战", "text")
-        self.text(oy, ox + 44, "守住 HQ，或击毁全部 12 辆敌军", "muted")
+        self.text(oy, ox + 44, f"守住 HQ，或击毁全部 {game.TARGET} 辆敌军", "muted")
+        self.text(oy + 1, ox + 2, f"第 {game.level_number}/{len(LEVELS)} 关  {game.level.name}", "accent")
         self.box(oy + 2, ox + 1, 21, 60, fill=False)
         fx, fy = ox + 2, oy + 3
         self.surface = "field"
@@ -189,15 +232,21 @@ class App(Canvas):
         for x, y, life in game.effects:
             self.cell(fy + y, fx + x * 2, glyphs.blast(life > 0.15))
         self.draw_hud(game, glyphs, ox + 63, oy)
-        self.hints(oy + 23, ox + 2, (("WASD/方向键", "移动"), ("空格/J", "射击"), ("F", "连射"),
-                                     ("P", "暂停"), ("?", "帮助"), ("Q", self.leave[:2])))
+        self.hints(oy + 23, ox + 2, (("WASD", "移动"), ("空格/J", "射击"), ("F", "连射"),
+                                     ("P", "暂停"), ("L", "选关"), ("?", "帮助"), ("Q", self.leave[:2])))
         if game.result:
-            self.dialog_in_field("任务完成" if game.result == "win" else "战斗结束", [
-                REASONS[game.reason], f"击毁 {game.kills}/12     得分 {game.score:05d}",
+            title = "任务完成" if game.result == "win" else "战斗结束"
+            action = "重试"
+            if game.result == "win":
+                action = "下一关" if game.level_number < len(LEVELS) else "选关"
+                if game.level_number == len(LEVELS):
+                    title = "最终关完成"
+            self.dialog_in_field(title, [
+                REASONS[game.reason], f"击毁 {game.kills}/{game.TARGET}     得分 {game.score:05d}",
                 "记录保存失败，本局仍可继续操作。" if self.save_failed
                 else f"原记录无法读取，已另存为 {self.preserved}" if self.preserved
                 else f"本地最高分 {self.best:05d}",
-                f"Enter / R 再来一局    Q {self.leave}"])
+                f"Enter {action}  R 重试  L 选关  Q {self.leave}"])
         elif game.paused:
             self.dialog_in_field("暂停 / PAUSED", ["休息一下。战场与倒计时已冻结。", f"P / Esc 继续    Q {self.leave}"])
 
@@ -212,9 +261,9 @@ class App(Canvas):
         self.text(oy + 6, side, "敌军", "muted")
         self.text(oy + 6, side + 6, f"余 {game.TARGET - game.kills:02}", "text")
         # 每个图标代表一辆敌军，击毁后变暗，直观显示离胜利还有多远。
-        for index in range(game.TARGET):
-            row, column = divmod(index, 4)
-            self.text(oy + 7 + row * 2, side + column * 3, *glyphs.icon(False, index < game.TARGET - game.kills))
+        for index in range(min(game.TARGET, 24)):
+            row, column = divmod(index, 8)
+            self.text(oy + 7 + row * 2, side + column * 2, *glyphs.icon(False, index < game.TARGET - game.kills))
         self.text(oy + 13, side, "生命", "muted")
         for index in range(3):
             self.text(oy + 13, side + 6 + index * 3, *glyphs.icon(True, index < game.lives))
