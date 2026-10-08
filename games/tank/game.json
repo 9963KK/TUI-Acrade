@@ -2,8 +2,8 @@
   "manifest_version": 1,
   "id": "tank",
   "name": "坦克大战",
-  "version": "0.2.0",
-  "description": "守住基地，等待援军。",
+  "version": "0.3.0",
+  "description": "经典 35 关单人战役，守卫基地，逐关挑战。",
   "authors": ["TUI Arcade contributors"],
   "launch": {
     "argv": ["{python}", "-m", "tank_battle"],
@@ -32,7 +32,7 @@
   "metadata": {
     "presentation": {
       "name_en": "TANK BATTLE",
-      "tags": ["3 分钟", "单人", "基地防守"],
+      "tags": ["35 关", "单人", "基地防守"],
       "cover": {
         "background": "#1c1c1c",
         "rows": [

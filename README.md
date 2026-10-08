@@ -25,7 +25,7 @@ scripts/install-tplay.sh
 
 | 游戏 | 说明 |
 | --- | --- |
-| [坦克大战](games/tank/README.md) | 6 关单人基地防守，每关最多 3 分钟；L 选关、WASD 移动、空格射击、F 自动连射、Q 返回大厅 |
+| [坦克大战](games/tank/README.md) | 经典 35 关单人战役；独立主菜单、暂停／继续／重试、选关与通关结算；退出游戏后返回大厅 |
 | [猜数字（样例）](templates/minimal-game/README.md) | 最小接入样例，默认不上架；开发新游戏时从这里复制起步 |
 
 ## 接入游戏
@@ -67,7 +67,7 @@ Linux 遵循 `XDG_DATA_HOME` / `XDG_STATE_HOME` / `XDG_CACHE_HOME`；macOS 上�
 平台大厅与坦克大战使用同一套 GrokNight 配色。大厅由 Go 渲染：根据 `COLORTERM`、`TERM` 选择 24 位真彩色、256 色、8／16 色或单色（`NO_COLOR`）；`ARCADE_ASCII=1` 或 `TERM=linux` 时线条改用 ASCII。每帧在内存中完整合成，Bubble Tea 只重写变化的行，静止画面不输出任何数据。下面几条描述坦克大战（Python / curses）：
 
 - **统一主题**：参考 [GrokNight](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager-render/src/theme/groknight.rs)，使用中性深灰背景和浮起一层的面板；蓝色用于界面提示，绿／红区分敌我，砖墙和钢墙使用低饱和色。
-- **块字符战场**：每个格子占两列，彩色终端用 `▟▙`、`━█` 等块字符拼出坦克轮廓，砖墙错缝、钢墙铆钉、水面随游戏时间流动。若字体缺少块字符，或终端把歧义宽度字符显示为双宽（中文环境常见设置，会导致画面错位），请用 `ARCADE_ASCII=1 ./play.sh` 切换为纯 ASCII 界面；Linux 控制台（`TERM=linux`）自动使用 ASCII。
+- **块字符战场**：52 × 52 子格地图压缩到 13 行，彩色终端用 `▟▙`、`━█` 显示坦克，用 Braille 点保留砖墙缺口，并区分钢墙、水域、森林与冰面。若字体缺少块字符，或终端把歧义宽度字符显示为双宽，请用 `ARCADE_ASCII=1 ./play.sh` 切换为 ASCII 界面；Linux 控制台自动使用 ASCII。
 - **颜色降级**：根据 curses 实际报告的能力，将 RGB 主题映射至 256 色或基础 8／16 色。支持 `NO_COLOR=1`；单色或色对不足时自动改用 ASCII 符号，以 `P`、`!`、地形字符和粗体区分内容。当前 curses 后端不直接输出 24 位 truecolor，不修改终端全局调色板。
 - **只提交变化**：比较画面中可见的状态；大厅、暂停、帮助等静止画面不重复重绘。画面变化时在内存中完整合成，再通过 curses 双缓冲差分更新终端；动画上限为 30 FPS，游戏模拟仍按独立的固定步长推进。
 - **整帧同步**：参考 Grok Build 的 [draw_frame](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager-render/src/render/draw.rs)，在识别到 Ghostty、WezTerm、Kitty、foot 时用 synchronized output 包裹提交；未知终端和 Apple Terminal 使用常规差分输出，tmux／screen 内禁用额外包裹。可用 `ARCADE_SYNC=0` 关闭，或在确认支持的直连终端中用 `ARCADE_SYNC=1` 启用。
@@ -80,4 +80,4 @@ python3 -m unittest discover -s tests -v
 
 `tests/test_terminal.py` 会先构建 Go 平台，再在真实伪终端中验证：大厅启动坦克大战、最小样例和模拟的预构建包，游戏在同一终端内运行并读取输入，Ctrl-C 只结束游戏，存档写入平台分配的目录，退出后回到大厅，终端模式完整还原。
 
-终端按键依靠系统连发，初次长按的延迟随系统设置变化；可开启自动连射改善边走边打的手感。3 分钟指有效游戏时间，不含主动暂停和查看帮助。
+终端按键依靠系统连发，初次长按的延迟随系统设置变化；可开启自动连射改善边走边打的手感。坦克大战以消灭每关 20 辆敌军作为胜利条件，生命、分数和升级可跨关保留，菜单打开时战场冻结。

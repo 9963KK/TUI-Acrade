@@ -68,7 +68,7 @@ class TankTerminalTests(unittest.TestCase):
 
     def quit(self):
         self.send("q")
-        self.expect("结束本局")
+        self.expect("确认退出")
         self.send("\r")
         # 退出时仍会重绘并恢复终端；持续读取，避免输出管道满后阻塞子进程。
         deadline = time.monotonic() + 4
@@ -84,30 +84,45 @@ class TankTerminalTests(unittest.TestCase):
 
     def test_select_second_and_third_levels_and_restore_terminal(self):
         self.start()
-        self.expect("前线阵地")
+        self.expect("BATTLE CITY / 主菜单")
         self.send("l")
         self.expect("选择关卡")
         self.send("s\r")
-        self.expect("渡口防线")
-        self.send("l")
-        self.expect("选择关卡")
-        self.send("s\r")
-        self.expect("钢铁要塞")
         self.send("p")
-        self.expect("PAUSED")
+        self.expect("第 02 关")
+        self.send("p")
+        self.send("l")
+        self.expect("选择关卡")
+        self.send("s\r")
+        self.expect("确认重新开始")
+        self.send("\r")
+        self.send("p")
+        self.expect("第 03 关")
+        # 暂停中返回游戏自己的主菜单，继续当前战役仍回到第三关。
+        self.send("sss\r")
+        self.expect("BATTLE CITY / 主菜单")
+        self.send("s\r")
+        self.send("p")
+        self.expect("第 03 关")
         self.quit()
         self.assertFalse(list(Path(self.data.name).rglob("scores.json")))
 
     def test_ascii_selection_and_help_work(self):
         self.start(ascii=True)
-        self.expect("前线阵地")
+        self.expect("BATTLE CITY / 主菜单")
         self.send("l")
         self.expect("选择关卡")
         self.send("ss\r")
-        self.expect("钢铁要塞")
         self.send("?")
-        self.expect("消灭 20 辆敌军")
+        self.expect("每关消灭 20 辆敌军")
         self.send("\r")
+        self.send("p")
+        self.expect("第 03 关")
+        self.send("s\r")
+        self.expect("确认重新开始")
+        self.send("\r")
+        self.send("p")
+        self.expect("第 03 关")
         self.quit()
 
     def test_victory_can_advance_to_next_level_in_real_terminal(self):
@@ -116,39 +131,47 @@ class TankTerminalTests(unittest.TestCase):
             "import tank_battle.__main__\n"
             "import curses\n"
             "from tank_battle.app import App\n"
+            "from tank_battle.rules import Tank\n"
             "def play(screen):\n"
             "    app = App(screen)\n"
-            "    app.game.elapsed = 179.95\n"
-            "    app.update(0.1)\n"
+            "    app.start()\n"
+            "    app.game.tiles.clear()\n"
+            "    app.game.kills = 19\n"
+            "    app.game.enemies = [Tank(16, 44)]\n"
+            "    app.handle(ord('j'))\n"
             "    app.run()\n"
             "curses.wrapper(play)\n"
         )
         self.start(script)
         self.expect("任务完成")
         self.send("\r")
-        self.expect("渡口防线")
+        self.send("p")
+        self.expect("第 02 关")
         self.quit()
         self.assertEqual(len(list(Path(self.data.name).rglob("scores.json"))), 1)
 
     def test_scroll_to_final_level_and_return_to_first(self):
         self.start()
-        self.expect(LEVELS[0].name)
+        self.expect("BATTLE CITY / 主菜单")
         self.send("l")
         self.expect("选择关卡")
         self.send("s" * (len(LEVELS) - 1))
-        # curses 只输出变化字符，标题的固定文字不会随滚动再次输出。
-        self.expect(f"> {len(LEVELS):02}")
+        # curses 差分输出不保证包含完整选中行；进入后从暂停标题验证实际关卡。
         self.send("\r")
-        self.expect(LEVELS[-1].name)
+        self.send("p")
+        self.expect("第 35 关")
+        self.send("p")
         self.send("?")
         self.expect(f"消灭 {LEVELS[-1].target} 辆敌军")
         self.send("\r")
         self.send("l")
         self.expect("选择关卡")
         self.send("w" * (len(LEVELS) - 1))
-        self.expect("> 01")
         self.send("\r")
-        self.expect(LEVELS[0].name)
+        self.expect("确认重新开始")
+        self.send("\r")
+        self.send("p")
+        self.expect("第 01 关")
         self.quit()
 
 
