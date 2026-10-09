@@ -271,8 +271,14 @@ class App(Canvas):
 
     def draw_cursor(self, y, x, tall=True):
         if self.rich and tall:
-            for row, text in enumerate(("▟▄▙━", "▜▀▛ ")):
-                self.text(y + row, x, text, "player", True)
+            # 炮塔、炮管与带轮子的履带分开绘制，避免糊成一个色块。
+            self.text(y, x + 1, "▄▄━━", "player", True)
+            track = (192, 144, 32)
+            edge = self.theme.custom(track, BLACK, (curses.COLOR_YELLOW, curses.COLOR_BLACK))
+            wheels = self.theme.custom(BLACK, track, (curses.COLOR_BLACK, curses.COLOR_YELLOW))
+            self.paint(y + 1, x, "▟", edge)
+            self.paint(y + 1, x + 1, "●●●", wheels)
+            self.paint(y + 1, x + 4, "▙", edge)
         else:
             self.text(y, x, self.glyphs.tank(Direction.RIGHT, True)[0], "player", True)
 
@@ -285,7 +291,7 @@ class App(Canvas):
         first = max(4, (24 - len(lines) * 2) // 2)
         for i, line in enumerate(lines):
             if line.startswith("> "):
-                self.draw_cursor(oy + first + i * 2, x - 4)
+                self.draw_cursor(oy + first + i * 2, x - 6)
                 line = "  " + line[2:]
             self.text(oy + first + i * 2, x, line)
 
@@ -361,7 +367,7 @@ class App(Canvas):
         for i, (label, _) in enumerate(items):
             y = oy + 16 + i * (1 if compact else 2)
             if i == self.menu_index:
-                self.draw_cursor(y, left - 6, tall=not compact)
+                self.draw_cursor(y, left - 7, tall=not compact)
             self.text(y, left, label, "text", i == self.menu_index)
         self.text(oy + page_height - 2, (width - 11) // 2, "TANK BATTLE", "muted")
         hint = "W S / 方向键选择   Enter / J 确认   经典 35 关"
