@@ -1,6 +1,6 @@
 # TUI Arcade · 终端游戏厅
 
-终端游戏的统一入口。平台只负责**列出游戏、在当前终端里启动游戏、游戏结束后回到大厅**；游戏的玩法、渲染、存档、联网都由游戏自己管理。第一款：**坦克大战**。
+终端游戏的统一入口。平台负责**安装与检查游戏、在当前终端里启动游戏、游戏结束后回到大厅**；游戏的玩法、菜单、渲染、存档、联网都由游戏自己管理。第一款：**坦克大战**。
 
 ## 开始玩
 
@@ -11,13 +11,28 @@ cd "/Users/jenkinschen5/Desktop/ManyThings/TUI Arcade"
 scripts/install-tplay.sh
 ```
 
-之后在任意目录输入 `tplay` 即可打开游戏厅。每次启动都会按当前源码构建平台（`bin/tplay`），改动代码后无需重新安装；`scripts/install-tplay.sh --uninstall` 可移除该命令。
+之后在任意目录输入 `tplay`，启动界面提供「进入游戏厅」「安装游戏」「退出游戏厅」。首次默认选中「安装游戏」，选择坦克大战，确认运行环境与试运行命令，通过检查后即可进入大厅游玩。大厅只展示已安装的游戏。
 
-- 直接进入坦克大战：`tplay --game tank`（退出后回到大厅）；查看版本：`tplay --version`。
+启动脚本会在源码变化时重新构建平台（`bin/tplay`），无需重新安装命令；`scripts/install-tplay.sh --uninstall` 可移除该命令。
+
+也可使用命令行管理游戏：
+
+```sh
+tplay install tank                   # 安装内置坦克大战，先展示并确认安装计划
+tplay install /absolute/path/to/game # 登记本地游戏目录，源码留在原处
+tplay install https://example.com/game.git # 克隆根目录带 game.json 的仓库
+tplay list                           # 查看已安装游戏
+tplay check tank --run               # 静态检查并使用存档副本试运行
+tplay uninstall tank                # 卸载登记和运行环境，保留存档
+```
+
+`install` / `uninstall` 的 `--yes` 可跳过确认，适合自动化；`install --keep` 保留失败后的暂存源码。安装页面也提供 git／本地目录添加、卸载和修复操作。大厅中的 `/` 按名称或标签搜索，`Q` / `Esc` 返回启动界面。
+
+- 安装后直接进入坦克大战：`tplay --game tank`（退出后回到大厅）；查看版本：`tplay --version`。
 - 不安装命令时，也可运行仓库中的 `./play.sh`，或在 macOS 上双击 `play.command`。
 - 坦克大战也可单独运行：`cd games/tank && python3 -m tank_battle`。
-- 在游戏厅中调试自己的游戏：`TUI_ARCADE_DEV_GAMES=/path/to/dir tplay`。
-- `go run ./cmd/tplay` 构建的程序位于 Go 缓存目录，找不到本仓库的 `games/`，请使用 `tplay` / `play.sh`，或设置 `TUI_ARCADE_DEV_GAMES`。
+- 调试自己的游戏：`tplay install /absolute/path/to/game`，修改源码后重新检查；若检查失败，在安装页面修复。
+- `go run ./cmd/tplay` 的构建在 Go 缓存目录中。需要内置游戏列表时设置 `TUI_ARCADE_REPO=/absolute/path/to/repo`，或使用 `tplay` / `play.sh`。
 
 从源码运行需要 Go 1.26+（构建平台）与 Python 3.10+（坦克大战等 Python 游戏），以及支持 UTF-8 的交互式终端，窗口至少 **80 列 × 24 行**。平台本身是单个可执行文件，`scripts/build.sh` 在一台机器上交叉编译出 macOS（Intel / Apple Silicon）、Linux x86_64 与 Windows x86_64 四个版本；坦克大战使用 Python 标准库 `curses`，目前只支持 macOS 与 Linux。
 
@@ -34,9 +49,10 @@ scripts/install-tplay.sh
 
 - 每个游戏是一个带 `game.json` 的文件夹，字段为 `manifest_version`、`id`、`name`、`version`、`description`、`authors`、`launch`、`requirements`、`data`、`documentation`，画廊展示信息放在可选的 `metadata.presentation`（英文名、标签、封面）。参考 [坦克大战的清单](games/tank/game.json)。
 - 平台只认识清单协议 `1`；更新的协议显示“需要更新平台”，不猜测解析。未知顶层字段、非法 ID（含 Windows 保留名 `con`、`nul` 等）、越界路径、缺失的文档文件都会让清单被拒绝，标题栏显示无效清单数量。
-- 游戏来源分两类：
-  - **开发来源**：平台可执行文件所在源码仓库的 `games/`（不看当前目录），以及 `TUI_ARCADE_DEV_GAMES` 指定的目录（多个用系统路径分隔符分隔：macOS / Linux 为 `:`，Windows 为 `;`）。可以用 `{python}` 从源码运行，解释器依次取 `TUI_ARCADE_PYTHON`、`PATH` 中的 `python3`、`python`。
-  - **已安装**：程序目录 `programs/<文件夹>/`（位置见下）。必须是自带运行环境的预构建包，`launch.argv[0]` 为包内入口（`./bin/...`），不允许 `{python}`。
+- 游戏来源分三类：**内置**是平台所在源码仓库的 `games/`；**git** 克隆到 `programs/games/<id>/`；**本地**登记绝对目录。三种来源都必须确认并通过安装检查，`TUI_ARCADE_DEV_GAMES` 不再作为自动发现入口。卸载只删除 git 克隆和平台创建的环境，保留内置／本地源码与所有存档。
+- 三种来源均可使用 `{python}` 或包内可执行入口 `./bin/...`。`requirements.python` 可声明 `version`（如 `>=3.10,<4`）、`modules`（如 `["curses"]）、`packages`（指向 requirements 文件）。平台选择符合版本的解释器，仅声明 packages 时创建独立 venv 并安装依赖；不修改系统 Python。可用 `TUI_ARCADE_PYTHON` 优先指定解释器。
+- 安装检查涵盖清单、平台／架构、解释器、模块、入口和 POSIX 伪终端试运行；试运行使用存档副本。Windows 跳过伪终端试运行并在报告中标明。源码或运行环境失效时，大厅仍保留游戏卡片但禁止启动，显示修复报告和日志。
+- 安装记录保存在数据根目录的 `installed.json`，采用文件锁、原子替换与 `.bak` 备份。安装／卸载中断会在下次启动恢复或清理暂存事务；游戏运行期间不能卸载。
 - 启动时注入：`TUI_ARCADE_LAUNCHER=1`、`TUI_ARCADE_PROTOCOL=1`、`TUI_ARCADE_GAME_ID`、`TUI_ARCADE_LOG_DIR`，以及 `data.managed_directory` 为真时的 `TUI_ARCADE_DATA_DIR`（平台负责创建）。平台不修改 `PYTHONPATH`，游戏不得依赖平台内部模块。
 - 退出码 0 为正常结束，其它退出码在大厅提示，Ctrl-C 结束不提示；胜负不体现在退出码里。平台在游戏退出后兜底复位颜色、光标、备用屏幕、鼠标上报、括号粘贴与 Kitty 键盘协议，并恢复终端模式。
 - Python 游戏可选用 `kit/arcade_kit`（绘制、配色、帧提交、目录规则）。选用时须在构建安装包时一并打入；源码布局下游戏自行从仓库 `kit/` 找到它。
@@ -56,7 +72,8 @@ Linux 遵循 `XDG_DATA_HOME` / `XDG_STATE_HOME` / `XDG_CACHE_HOME`；macOS 上�
 
 - `platform/`：平台（Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea)），入口为 `cmd/tplay`。
   - `internal/catalog`：读取并校验清单；`internal/launcher`：注入环境、交出与收回终端（POSIX 用 termios，Windows 用控制台模式）；
-  - `internal/lobby`：画廊大厅（2 行 3 列，超过 6 款自动分页，左右不跨行）；`internal/screen`：单元格缓冲区与颜色降级；`internal/paths`：各系统目录规则。
+  - `internal/install`：源码获取、依赖环境、检查与安装事务；`internal/registry`：安装记录与跨进程文件锁；
+  - `internal/lobby`：启动界面、安装管理、画廊大厅（2 行 3 列，超过 6 款自动分页，左右不跨行）；`internal/screen`：单元格缓冲区与颜色降级；`internal/paths`：各系统目录规则。
 - `kit/arcade_kit/`：Python 游戏可选用的工具包。`canvas.py` 绘制，`theme.py` 语义颜色与按需色对，`presentation.py` 帧提交，`paths.py` 各系统目录规则（与 `internal/paths` 同一规则）。
 - `games/tank/`：坦克大战，见其 [README](games/tank/README.md)。
 - `templates/minimal-game/`：只用标准库的最小游戏样例。
@@ -78,6 +95,6 @@ Linux 遵循 `XDG_DATA_HOME` / `XDG_STATE_HOME` / `XDG_CACHE_HOME`；macOS 上�
 python3 -m unittest discover -s tests -v
 ```
 
-`tests/test_terminal.py` 会先构建 Go 平台，再在真实伪终端中验证：大厅启动坦克大战、最小样例和模拟的预构建包，游戏在同一终端内运行并读取输入，Ctrl-C 只结束游戏，存档写入平台分配的目录，退出后回到大厅，终端模式完整还原。
+`tests/test_terminal.py` 会先构建 Go 平台，再在真实伪终端中验证：首次通过菜单安装坦克大战；安装后启动坦克大战、最小样例与本地可执行游戏；Ctrl-C 只结束游戏；存档写入平台分配的目录；退出后回到大厅和启动界面；终端模式完整还原。Go 测试覆盖安装失败回滚、修复、依赖环境、记录备份、并发锁和中断恢复。
 
 终端按键依靠系统连发，初次长按的延迟随系统设置变化；可开启自动连射改善边走边打的手感。坦克大战以消灭每关 20 辆敌军作为胜利条件，生命、分数和升级可跨关保留，菜单打开时战场冻结。

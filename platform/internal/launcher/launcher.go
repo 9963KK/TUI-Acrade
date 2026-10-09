@@ -72,6 +72,8 @@ type Game struct {
 	// ExitCode 为负数表示被信号结束（-2 即 SIGINT）。
 	ExitCode int
 	Err      error
+	// Release 释放安装管理器持有的游戏锁，防止运行期间被卸载。
+	Release func()
 }
 
 // Prepare checks everything that can fail before the lobby gives up the terminal:
@@ -131,6 +133,9 @@ func (g *Game) SetStderr(io.Writer) {}
 
 // Run executes the game in the foreground and always restores the terminal afterwards.
 func (g *Game) Run() error {
+	if g.Release != nil {
+		defer g.Release()
+	}
 	saved := saveTerminal()
 	handingOff.Store(true)
 	// 游戏运行期间平台自己不响应键盘信号（Ctrl-C、Ctrl-\）；用 Notify 捕获而不是忽略，

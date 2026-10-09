@@ -13,7 +13,8 @@
     "os": ["macos", "linux", "windows"],
     "arch": ["x86_64", "arm64"],
     "network": "none",
-    "terminal": {"columns": 40, "rows": 10, "color": "optional", "unicode": "optional"}
+    "terminal": {"columns": 40, "rows": 10, "color": "optional", "unicode": "optional"},
+    "python": {"version": ">=3.10"}
   },
   "data": {"managed_directory": true, "save_mode": "records"},
   "documentation": {"readme": "README.md", "license": "LICENSE", "credits": "CREDITS.md"},

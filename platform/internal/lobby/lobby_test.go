@@ -19,7 +19,7 @@ var rich = screen.Theme{Profile: screen.TrueColor, Rich: true, Unicode: true}
 func tank(t *testing.T) catalog.Entry {
 	t.Helper()
 	root := catalog.FindRepo(".")
-	entry, err := catalog.Parse(filepath.Join(root, "games", "tank", catalog.Manifest), catalog.Dev, catalog.Host{System: "macos", Arch: "arm64"})
+	entry, err := catalog.Parse(filepath.Join(root, "games", "tank", catalog.Manifest), catalog.Builtin, catalog.Host{System: "macos", Arch: "arm64"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestListsGamesAndLaunchesSelection(t *testing.T) {
 	r := &recorder{}
 	m := sized(New([]catalog.Entry{tank(t)}, nil, rich, r.launch, nil), 80, 24)
 	view := plain(m)
-	for _, want := range []string{"终端游戏厅", "坦克大战", "TANK BATTLE", " 3 分钟 ", "开发来源 · v0.2.0", "▜▛", "─"} {
+	for _, want := range []string{"终端游戏厅", "坦克大战", "TANK BATTLE", " 35 关 ", "内置 · v0.3.0", "▜▛", "─"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -148,7 +148,7 @@ func TestBlockedGamesAndNoticesNeverLaunch(t *testing.T) {
 		}
 	}
 	m, _ = press(m, "enter")
-	if len(r.opened) != 0 || m.notice == nil || m.notice.Title != "无法启动" {
+	if len(r.opened) != 0 || m.notice == nil || m.notice.Title != "检查报告 / 需要修复" {
 		t.Fatal("blocked game launched")
 	}
 	m, _ = press(m, "s")

@@ -1,5 +1,5 @@
 #!/bin/sh
-# 从源码构建并启动游戏厅（需要 Go 1.26+）。开发来源的 Python 游戏使用 TUI_ARCADE_PYTHON 或 PATH 中的 python3。
+# 从源码构建并启动游戏厅（需要 Go 1.26+）；Python 游戏的解释器在安装时按清单选择。
 # scripts/install-tplay.sh 安装的 tplay 命令会调用本脚本。
 set -e
 cd -- "$(dirname -- "$0")"

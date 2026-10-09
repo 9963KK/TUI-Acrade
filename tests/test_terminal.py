@@ -51,11 +51,21 @@ class TerminalTests(unittest.TestCase):
         os.close(self.master)
         os.close(self.slave)
 
-    def start(self, controlling=False, **env):
+    def environment(self, **env):
         # 所有程序、存档与日志目录都隔离在临时目录中；XDG_DATA_HOME 同时隔离坦克旧存档的迁移来源。
         home = Path(self.data.name)
         # 不继承开发者本机的 TUI_ARCADE_* 设置，避免展位顺序或目录被改变。
         inherited = {k: v for k, v in os.environ.items() if not k.startswith("TUI_ARCADE_")}
+        return {**inherited, "TERM": "xterm-256color", "LC_ALL": "en_US.UTF-8", "TUI_ARCADE_HOME": str(home),
+                "XDG_DATA_HOME": str(home / "xdg"), "TUI_ARCADE_PYTHON": sys.executable,
+                "TUI_ARCADE_REPO": str(ROOT), **env}
+
+    def install(self, target):
+        result = subprocess.run([str(self.binary), "install", str(target), "--yes"],
+                                env=self.environment(), capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def start(self, controlling=False, gallery=True, **env):
         def controlling_terminal():
             # 像真实终端一样：新会话以这个伪终端为控制终端，Ctrl-C 才会作为 SIGINT 发给前台进程组。
             # 会话首进程退出后 macOS 会回收该终端，所以只有需要 Ctrl-C 的测试这样启动。
@@ -65,11 +75,13 @@ class TerminalTests(unittest.TestCase):
         self.process = subprocess.Popen(
             [str(self.binary)], stdin=self.slave, stdout=self.slave, stderr=self.slave, cwd=ROOT,
             start_new_session=not controlling, preexec_fn=controlling_terminal if controlling else None,
-            env={**inherited, "TERM": "xterm-256color", "LC_ALL": "en_US.UTF-8", "TUI_ARCADE_HOME": str(home),
-                 "XDG_DATA_HOME": str(home / "xdg"), "TUI_ARCADE_PYTHON": sys.executable,
-                 # 测试用的平台构建在仓库之外，不会自动找到仓库的 games/，须显式指定开发来源。
-                 "TUI_ARCADE_DEV_GAMES": str(ROOT / "games"), **env},
+            env=self.environment(**env),
         )
+        self.expect("启动界面")
+        if gallery:
+            if not (Path(self.data.name) / "data" / "installed.json").exists():
+                os.write(self.master, b"w")
+            os.write(self.master, b"\r")
 
     def expect(self, text):
         output = b""
@@ -88,14 +100,19 @@ class TerminalTests(unittest.TestCase):
     def answer(self, chunk):
         # 扮演终端：Bubble Tea 启动时询问背景色与光标位置（OSC 11 与 DSR），真实终端会立即回应，
         # 不回应时它要等 5 秒超时。
-        if b"\x1b[6n" in chunk:
+        if b"\x1b[6n" in chunk or b"\x1b]11;?" in chunk:
             os.write(self.master, b"\x1b]11;rgb:0000/0000/0000\x1b\\\x1b[1;1R")
 
     def drain(self):
-        while select.select([self.master], [], [], 0.05)[0]:
+        deadline = time.monotonic() + 0.3
+        while time.monotonic() < deadline and select.select([self.master], [], [], 0.05)[0]:
             self.answer(os.read(self.master, 65536))
 
     def quit_and_check_terminal(self, modes=True):
+        self.drain()
+        os.write(self.master, b"q")
+        self.expect("进入游戏厅")
+        self.drain()
         os.write(self.master, b"q")
         deadline = time.monotonic() + 4
         while self.process.poll() is None and time.monotonic() < deadline:
@@ -112,6 +129,7 @@ class TerminalTests(unittest.TestCase):
         self.assertEqual(restored, original)
 
     def test_lobby_launches_tank_in_same_terminal_and_returns(self):
+        self.install("tank")
         self.start()
         self.expect("终端游戏厅")
         # 排空首帧剩余字节；静止大厅不应再发送任何刷新数据。
@@ -140,20 +158,21 @@ class TerminalTests(unittest.TestCase):
 
     def install_echo(self):
         # 模拟已安装的预构建包：包内可执行入口，读取同一终端的输入后以非零状态退出。
-        folder = Path(self.data.name) / "programs" / "echo"
+        folder = Path(self.data.name) / "source" / "echo"
         (folder / "bin").mkdir(parents=True)
         entry = folder / "bin" / "echo-game"
-        entry.write_text('#!/bin/sh\necho "HELLO FROM $TUI_ARCADE_GAME_ID"\nread line\nexit 3\n')
+        entry.write_text('#!/bin/sh\necho "INSTALL CHECK"\nexit 0\n')
         entry.chmod(0o755)
         (folder / "game.json").write_text(json.dumps({
             "manifest_version": 1, "id": "echo", "name": "回声", "version": "1.0.0", "authors": ["测试"],
             "launch": {"argv": ["./bin/echo-game"]}}), encoding="utf-8")
+        self.install(folder)
+        entry.write_text('#!/bin/sh\necho "HELLO FROM $TUI_ARCADE_GAME_ID"\nread line\nexit 3\n')
 
     def test_ctrl_c_goes_to_the_game_not_the_platform(self):
         self.install_echo()
         self.start(controlling=True)
         self.expect("回声")
-        os.write(self.master, b"d")
         self.drain()
         os.write(self.master, b"\r")
         self.expect("HELLO FROM echo")
@@ -168,7 +187,6 @@ class TerminalTests(unittest.TestCase):
         self.install_echo()
         self.start()
         self.expect("回声")
-        os.write(self.master, b"d")
         self.drain()
         os.write(self.master, b"\r")
         self.expect("HELLO FROM echo")
@@ -181,9 +199,9 @@ class TerminalTests(unittest.TestCase):
         self.quit_and_check_terminal()
 
     def test_sample_game_saves_into_assigned_data_dir(self):
-        self.start(TUI_ARCADE_DEV_GAMES=os.pathsep.join((str(ROOT / "games"), str(ROOT / "templates"))))
+        self.install(ROOT / "templates" / "minimal-game")
+        self.start()
         self.expect("猜数字")
-        os.write(self.master, b"d")
         self.drain()
         os.write(self.master, b"\r")
         self.expect("1 到 100")
@@ -198,8 +216,27 @@ class TerminalTests(unittest.TestCase):
 
     def test_working_directory_never_adds_games(self):
         # 装在仓库之外的平台即使在仓库目录里运行，也不加载这里的 games/（只认可执行文件所在的仓库）。
-        self.start(TUI_ARCADE_DEV_GAMES="")
+        self.start(TUI_ARCADE_REPO="")
         self.expect("已收录 0 款")
+        self.quit_and_check_terminal()
+
+    def test_first_run_installs_tank_from_menu_before_entering_lobby(self):
+        self.start(gallery=False)
+        os.write(self.master, b"\r")
+        self.expect("可安装")
+        os.write(self.master, b"\r")
+        self.expect("确认安装")
+        self.assertFalse((Path(self.data.name) / "data" / "installed.json").exists())
+        os.write(self.master, b"\r")
+        self.expect("安装完成")
+        records = json.loads((Path(self.data.name) / "data" / "installed.json").read_text())
+        self.assertEqual([g["id"] for g in records["games"]], ["tank"])
+        os.write(self.master, b"\x1b")
+        self.drain()
+        os.write(self.master, b"q")
+        self.expect("进入游戏厅")
+        os.write(self.master, b"\r")
+        self.expect("终端游戏厅")
         self.quit_and_check_terminal()
 
     def test_noninteractive_launch_has_clear_error(self):

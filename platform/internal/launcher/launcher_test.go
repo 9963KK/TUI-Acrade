@@ -14,7 +14,7 @@ import (
 
 func entry(root string, argv ...string) catalog.Entry {
 	return catalog.Entry{ID: "demo", Name: "演示", Argv: argv, Root: root, Cwd: root, ManagedData: true,
-		Source: catalog.Dev, Terminal: catalog.DefaultTerminal}
+		Source: catalog.Local, Terminal: catalog.DefaultTerminal}
 }
 
 func lookup(env []string, key string) (string, bool) {

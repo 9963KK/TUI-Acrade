@@ -53,11 +53,16 @@ type Model struct {
 	width, height int
 	help          bool
 	notice        *Notice
+	allGames      []catalog.Entry
+	search        bool
+	query         string
+	back          bool
+	report        func(catalog.Entry) []string
 }
 
 // New builds the lobby. start, when set, is opened as soon as the window size is known (--game).
 func New(games []catalog.Entry, problems []catalog.Problem, theme screen.Theme, launch Launch, start *catalog.Entry) Model {
-	return Model{games: games, problems: problems, theme: theme, launch: launch, start: start}
+	return Model{games: games, allGames: games, problems: problems, theme: theme, launch: launch, start: start}
 }
 
 // Command wraps a prepared game so Bubble Tea releases the terminal, runs it, and reports back.
@@ -94,6 +99,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = &Notice{"游戏异常退出", []string{fmt.Sprintf("%s以代码 %d 结束。", msg.Name, msg.Code), "Enter 关闭"}}
 		}
 	case tea.KeyMsg:
+		if m.search {
+			switch msg.Type {
+			case tea.KeyCtrlC:
+				return m, tea.Quit
+			case tea.KeyEsc:
+				m.search, m.query = false, ""
+			case tea.KeyEnter:
+				m.search = false
+			case tea.KeyBackspace, tea.KeyDelete:
+				runes := []rune(m.query)
+				if len(runes) > 0 {
+					m.query = string(runes[:len(runes)-1])
+				}
+			case tea.KeyRunes:
+				m.query += string(msg.Runes)
+			}
+			m.filter()
+			return m, nil
+		}
 		return m.key(strings.ToLower(msg.String()))
 	}
 	return m, nil
@@ -112,6 +136,9 @@ func (m Model) key(key string) (tea.Model, tea.Cmd) {
 	}
 	if m.width < minWidth || m.height < minHeight {
 		if key == "q" || key == "esc" {
+			if m.back {
+				return m, func() tea.Msg { return Back{} }
+			}
 			return m, tea.Quit
 		}
 		return m, nil
@@ -124,9 +151,19 @@ func (m Model) key(key string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch key {
+	case "/":
+		m.search = true
 	case "?", "h":
 		m.help = true
 	case "q", "esc":
+		if key == "esc" && m.query != "" {
+			m.query = ""
+			m.filter()
+			return m, nil
+		}
+		if m.back {
+			return m, func() tea.Msg { return Back{} }
+		}
 		return m, tea.Quit
 	case "enter", " ":
 		if m.selection < len(m.games) {
@@ -147,7 +184,11 @@ func (m Model) key(key string) (tea.Model, tea.Cmd) {
 
 func (m Model) open(entry catalog.Entry) (tea.Model, tea.Cmd) {
 	if entry.Issue != "" {
-		m.notice = &Notice{"无法启动", []string{entry.Name + "：" + entry.Issue, "Enter 关闭"}}
+		lines := []string{entry.Name + "：" + entry.Issue, "请到安装页面修复；Enter 关闭"}
+		if m.report != nil {
+			lines = m.report(entry)
+		}
+		m.notice = &Notice{"检查报告 / 需要修复", lines}
 		return m, nil
 	}
 	if need := entry.Terminal; m.width < need.Columns || m.height < need.Rows {
@@ -201,6 +242,9 @@ func (m Model) drawLobby(c *canvas) {
 	}
 	c.text(oy, x0+78-screen.StringWidth(count), count, "muted", false)
 	c.text(oy+1, x0, strings.Repeat(m.theme.Rule(), 78), "border", false)
+	if m.search || m.query != "" {
+		c.text(oy+2, x0, "搜索："+m.query+"_  Enter 完成 / Esc 清除", "accent", false)
+	}
 	first := m.selection / page * page
 	for slot := first; slot < first+page; slot++ {
 		row, column := (slot-first)/columns, (slot-first)%columns
@@ -230,7 +274,11 @@ func (m Model) drawLobby(c *canvas) {
 		c.text(oy+19, x0, fmt.Sprintf("%02d 号展位", m.selection+1), "muted", true)
 		c.text(oy+20, x0, "暂无游戏", "dim", false)
 	}
-	c.hints(oy+23, x0, [][2]string{{m.theme.Arrows(), "选择"}, {"Enter", "开始"}, {"?", "帮助"}, {"Q", "退出"}})
+	leave := "退出"
+	if m.back {
+		leave = "启动界面"
+	}
+	c.hints(oy+23, x0, [][2]string{{m.theme.Arrows(), "选择"}, {"Enter", "开始"}, {"/", "搜索"}, {"Q", leave}})
 }
 
 // status is the top-right line of the detail card: why a game cannot run, then the window requirement,
@@ -250,10 +298,25 @@ func (m Model) status(entry catalog.Entry) (string, string) {
 		return "需要 UTF-8 终端", "warning"
 	}
 	status := "v" + entry.Version
-	if entry.Source == catalog.Dev {
-		status = "开发来源" + m.theme.Dot() + status
+	if entry.Source != "" {
+		label := map[catalog.Source]string{catalog.Builtin: "内置", catalog.Git: "git", catalog.Local: "本地"}[entry.Source]
+		status = label + m.theme.Dot() + status
 	}
 	return status, "muted"
+}
+
+// Back returns from the gallery to the platform start screen.
+type Back struct{}
+
+func (m *Model) filter() {
+	m.games = nil
+	for _, entry := range m.allGames {
+		haystack := strings.Join(append([]string{entry.ID, entry.Name, entry.Presentation.NameEn}, entry.Presentation.Tags...), " ")
+		if strings.Contains(strings.ToLower(haystack), strings.ToLower(m.query)) {
+			m.games = append(m.games, entry)
+		}
+	}
+	m.selection = 0
 }
 
 func (m Model) drawCard(c *canvas, y, x, slot int) {
@@ -283,7 +346,7 @@ func (m Model) drawCard(c *canvas, y, x, slot int) {
 		role = "accent"
 	}
 	c.box(y, x, 6, 24, "", role, selected, false)
-	m.drawCover(c, y+1, x+1, entry.Presentation)
+	m.drawCover(c, y+1, x+1, entry.Presentation, entry.Issue != "")
 	// 铭牌只放编号和名称，英文名与简介留给下方说明卡；不能运行的游戏名称变暗。
 	numberRole, nameRole := "muted", "text"
 	if selected {
@@ -296,8 +359,16 @@ func (m Model) drawCard(c *canvas, y, x, slot int) {
 	c.text(y+6, x+4, entry.Name, nameRole, true)
 }
 
-func (m Model) drawCover(c *canvas, y, x int, look catalog.Presentation) {
+func (m Model) drawCover(c *canvas, y, x int, look catalog.Presentation, disabled bool) {
 	bg := screen.C(look.Background.R, look.Background.G, look.Background.B)
+	color := func(value screen.Color) screen.Color {
+		if disabled {
+			gray := uint8((int(value.RGB.R)*30 + int(value.RGB.G)*59 + int(value.RGB.B)*11) / 100)
+			return screen.C(gray, gray, gray)
+		}
+		return value
+	}
+	bg = color(bg)
 	blank := screen.Style{FG: screen.C(225, 225, 225), BG: bg}
 	for row := 0; row < catalog.CoverHeight; row++ {
 		c.paint(y+row, x, strings.Repeat(" ", catalog.CoverWidth*2), blank)
@@ -312,6 +383,7 @@ func (m Model) drawCover(c *canvas, y, x int, look catalog.Presentation) {
 			if cell.BG != nil {
 				style.BG = screen.C(cell.BG.R, cell.BG.G, cell.BG.B)
 			}
+			style.FG, style.BG = color(style.FG), color(style.BG)
 			glyph := cell.ASCII
 			if m.theme.Rich {
 				glyph = cell.Text

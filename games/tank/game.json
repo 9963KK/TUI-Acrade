@@ -18,6 +18,10 @@
       "rows": 24,
       "color": "optional",
       "unicode": "optional"
+    },
+    "python": {
+      "version": ">=3.10",
+      "modules": ["curses"]
     }
   },
   "data": {

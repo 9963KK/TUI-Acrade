@@ -26,14 +26,17 @@ const (
 	Protocol = 1
 )
 
-// Source says where a game was found.
+// Source 表示游戏来源，见 docs/game-installation.md §1.1。
+// 各来源均允许 {python}，平台在安装时准备并检查运行环境。
 type Source string
 
 const (
-	// Dev 来源为仓库 games/ 或 TUI_ARCADE_DEV_GAMES，可用 {python} 从源码运行。
-	Dev Source = "dev"
-	// Installed 来源为程序目录，必须是自带运行环境的预构建包。
-	Installed Source = "installed"
+	// Builtin 为平台仓库 games/ 下随平台一起获取的游戏。
+	Builtin Source = "builtin"
+	// Git 为从独立 git 仓库克隆到程序目录的游戏。
+	Git Source = "git"
+	// Local 为登记的本机目录，供游戏开发者使用。
+	Local Source = "local"
 )
 
 var (
@@ -59,7 +62,17 @@ var (
 	keyboard = []string{"basic", "kitty-optional"}
 	graphics = []string{"none", "kitty-optional"}
 	saves    = []string{"none", "records", "progress", "resume"}
+	module   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`)
 )
+
+// Python 表示游戏声明的 Python 运行环境。
+type Python struct {
+	Version Constraint
+	// Modules 必须能被导入，例如 curses。
+	Modules []string
+	// Packages 为依赖清单文件的绝对路径；声明时平台为该游戏创建独立虚拟环境。
+	Packages string
+}
 
 // CoverCell is one two-column cell of a gallery cover.
 type CoverCell struct {
@@ -99,6 +112,8 @@ type Entry struct {
 	SaveMode                       string
 	Source                         Source
 	Presentation                   Presentation
+	// Python 为 nil 表示未声明；启动命令用到 {python} 时按“任意版本”处理。
+	Python *Python
 	// Issue 非空时游戏能展示但不能启动：协议版本过新、系统或架构不兼容。
 	Issue string
 }
@@ -395,8 +410,8 @@ func Parse(path string, source Source, host Host) (Entry, error) {
 	root := filepath.Dir(absolute)
 	if info, err := os.Lstat(absolute); err != nil {
 		return Entry{}, err
-	} else if source == Installed && info.Mode()&os.ModeSymlink != 0 {
-		return Entry{}, fail("installed manifests must not be symlinks")
+	} else if source == Git && info.Mode()&os.ModeSymlink != 0 {
+		return Entry{}, fail("manifests cloned from git must not be symlinks")
 	}
 	raw, err := os.ReadFile(absolute)
 	if err != nil {
@@ -456,6 +471,9 @@ func Parse(path string, source Source, host Host) (Entry, error) {
 	if err := parseData(data, &entry); err != nil {
 		return Entry{}, err
 	}
+	if entry.Python == nil && usesPython(entry.Argv) {
+		entry.Python = &Python{}
+	}
 	documentation, err := child(data, "documentation", "manifest")
 	if err != nil {
 		return Entry{}, err
@@ -499,19 +517,11 @@ func parseLaunch(data object, source Source, entry *Entry) error {
 		return err
 	}
 	first := entry.Argv[0]
-	for _, part := range entry.Argv {
-		// 预构建包不得依赖玩家电脑上的解释器；{python} 只允许用于开发来源。
-		if source != Dev && strings.Contains(part, "{python}") {
-			return fail("{python} is only allowed for development sources")
-		}
-	}
 	switch {
 	case strings.HasPrefix(first, "./"):
 		if _, err := inside(entry.Root, first[2:], "launch.argv[0]"); err != nil {
 			return err
 		}
-	case source != Dev:
-		return fail("launch.argv[0] must be an entry inside the package (./...)")
 	case strings.Contains(first, "{dir}"):
 		// 占位符只能出现在参数里；入口要么是 ./ 包内路径，要么是 {python}。
 		return fail("launch.argv[0] must not use {dir}; use ./ for entries inside the package")
@@ -533,7 +543,7 @@ func parseRequirements(data object, host Host, entry *Entry) error {
 	if err != nil {
 		return err
 	}
-	if err := only(requirements, "requirements", "os", "arch", "network", "terminal"); err != nil {
+	if err := only(requirements, "requirements", "os", "arch", "network", "terminal", "python"); err != nil {
 		return err
 	}
 	terminal, err := child(requirements, "terminal", "requirements")
@@ -571,6 +581,9 @@ func parseRequirements(data object, host Host, entry *Entry) error {
 	if err != nil {
 		return err
 	}
+	if entry.Python, err = parsePython(requirements, entry.Root); err != nil {
+		return err
+	}
 	if (len(wantSystems) > 0 && !slices.Contains(wantSystems, host.System)) ||
 		(len(wantArches) > 0 && !slices.Contains(wantArches, host.Arch)) {
 		describe := func(values []string, fallback string) string {
@@ -582,6 +595,55 @@ func parseRequirements(data object, host Host, entry *Entry) error {
 		entry.Issue = fmt.Sprintf("本机不支持（%s，%s）", describe(wantSystems, "任意系统"), describe(wantArches, "任意架构"))
 	}
 	return nil
+}
+
+func usesPython(argv []string) bool {
+	for _, part := range argv {
+		if strings.Contains(part, "{python}") {
+			return true
+		}
+	}
+	return false
+}
+
+func parsePython(requirements object, root string) (*Python, error) {
+	if _, ok := requirements["python"]; !ok {
+		return nil, nil
+	}
+	spec, err := child(requirements, "python", "requirements")
+	if err != nil {
+		return nil, err
+	}
+	if err := only(spec, "requirements.python", "version", "modules", "packages"); err != nil {
+		return nil, err
+	}
+	python := &Python{}
+	if value, ok := spec["version"]; ok {
+		text, _ := value.(string)
+		if python.Version, err = ParseConstraint(text); err != nil {
+			return nil, fail("requirements.python.version: %v", err)
+		}
+	}
+	if python.Modules, err = stringList(spec, "modules", "requirements.python", nil, false); err != nil {
+		return nil, err
+	}
+	for _, name := range python.Modules {
+		if !module.MatchString(name) {
+			return nil, fail("requirements.python.modules: invalid module %q", name)
+		}
+	}
+	if value, ok := spec["packages"]; ok {
+		relative, _ := value.(string)
+		path, err := inside(root, relative, "requirements.python.packages")
+		if err != nil {
+			return nil, err
+		}
+		if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+			return nil, fail("requirements.python.packages does not exist")
+		}
+		python.Packages = path
+	}
+	return python, nil
 }
 
 func parseData(data object, entry *Entry) error {
@@ -639,18 +701,12 @@ func Load(dirs []Dir, host Host) ([]Entry, []Problem) {
 	return entries, problems
 }
 
-// Dirs lists development sources (the repository games/ plus TUI_ARCADE_DEV_GAMES) and the installed programs.
-func Dirs(repo, devGames, programs string) []Dir {
-	var dirs []Dir
-	if repo != "" {
-		dirs = append(dirs, Dir{filepath.Join(repo, "games"), Dev})
+// BuiltinGames 列出平台仓库 games/ 目录中的内置游戏。
+func BuiltinGames(repo string, host Host) ([]Entry, []Problem) {
+	if repo == "" {
+		return nil, nil
 	}
-	for _, path := range filepath.SplitList(devGames) {
-		if path != "" {
-			dirs = append(dirs, Dir{path, Dev})
-		}
-	}
-	return append(dirs, Dir{programs, Installed})
+	return Load([]Dir{{filepath.Join(repo, "games"), Builtin}}, host)
 }
 
 // FindRepo walks up from each start directory to the checkout that contains platform/go.mod.
