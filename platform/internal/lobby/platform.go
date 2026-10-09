@@ -1,7 +1,6 @@
 package lobby
 
 import (
-	"fmt"
 	"io"
 	"strings"
 
@@ -372,16 +371,15 @@ func (m Platform) View() string {
 	if m.page == "install" || m.page == "input" {
 		title = "安装管理"
 	}
-	c.text(oy, ox, "TUI ARCADE / "+title, "accent", true)
+	if m.page != "start" || m.width < minWidth || m.height < minHeight {
+		c.text(oy, ox, "TUI ARCADE / "+title, "accent", true)
+	}
 	if m.width < minWidth || m.height < minHeight {
 		c.text(oy+3, ox, "窗口太小，需要 80 x 24；Q 返回。", "warning", false)
 		return c.buffer.Render(m.theme.Profile)
 	}
 	if m.page == "start" {
-		for i, label := range []string{"进入游戏厅", "安装游戏", "退出游戏厅"} {
-			m.row(c, oy+7+i*3, ox+15, label, i == m.selection)
-		}
-		c.text(oy+20, ox+2, fmt.Sprintf("已安装 %d 款游戏；方向键选择，Enter 确认。", len(m.gallery.allGames)), "muted", false)
+		m.drawStart(c)
 	} else if m.page == "install" {
 		c.text(oy+2, ox, "安装游戏", "text", true)
 		first := max(0, m.selection-12)
