@@ -6,13 +6,13 @@ from .rules import Direction
 
 # 地形自带底色：(前景 RGB, 背景 RGB, 8 色终端下的 (前景, 背景))；块字符的前景和背景共同组成图案。
 TILE_COLORS = {
-    "tile.brick": ((175, 135, 95), (68, 68, 68), (curses.COLOR_YELLOW, curses.COLOR_BLACK)),
+    "tile.brick": ((200, 88, 40), (48, 24, 8), (curses.COLOR_YELLOW, curses.COLOR_BLACK)),
     "tile.steel": ((218, 218, 218), (128, 128, 128), (curses.COLOR_BLACK, curses.COLOR_WHITE)),
     "tile.water": ((135, 175, 215), (0, 95, 135), (curses.COLOR_CYAN, curses.COLOR_BLUE)),
     "tile.forest": ((95, 175, 95), (0, 55, 0), (curses.COLOR_GREEN, curses.COLOR_BLACK)),
     "tile.ice": ((215, 255, 255), (65, 100, 115), (curses.COLOR_WHITE, curses.COLOR_CYAN)),
     "tile.base": ((28, 28, 28), (215, 175, 95), (curses.COLOR_BLACK, curses.COLOR_YELLOW)),
-    "tile.shield": ((175, 215, 95), (0, 95, 0), (curses.COLOR_BLACK, curses.COLOR_GREEN)),
+    "tile.shield": ((255, 240, 160), (0, 0, 0), (curses.COLOR_YELLOW, curses.COLOR_BLACK)),
 }
 
 

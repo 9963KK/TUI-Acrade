@@ -84,7 +84,7 @@ class TankTerminalTests(unittest.TestCase):
 
     def test_select_second_and_third_levels_and_restore_terminal(self):
         self.start()
-        self.expect("BATTLE CITY / 主菜单")
+        self.expect("1 PLAYER")
         self.send("l")
         self.expect("选择关卡")
         self.send("s\r")
@@ -100,7 +100,7 @@ class TankTerminalTests(unittest.TestCase):
         self.expect("第 03 关")
         # 暂停中返回游戏自己的主菜单，继续当前战役仍回到第三关。
         self.send("sss\r")
-        self.expect("BATTLE CITY / 主菜单")
+        self.expect("1 PLAYER")
         self.send("s\r")
         self.send("p")
         self.expect("第 03 关")
@@ -109,7 +109,7 @@ class TankTerminalTests(unittest.TestCase):
 
     def test_ascii_selection_and_help_work(self):
         self.start(ascii=True)
-        self.expect("BATTLE CITY / 主菜单")
+        self.expect("1 PLAYER")
         self.send("l")
         self.expect("选择关卡")
         self.send("ss\r")
@@ -152,7 +152,7 @@ class TankTerminalTests(unittest.TestCase):
 
     def test_scroll_to_final_level_and_return_to_first(self):
         self.start()
-        self.expect("BATTLE CITY / 主菜单")
+        self.expect("1 PLAYER")
         self.send("l")
         self.expect("选择关卡")
         self.send("s" * (len(LEVELS) - 1))

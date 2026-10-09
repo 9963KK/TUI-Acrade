@@ -5,8 +5,9 @@ import math
 import os
 import time
 
-from arcade_kit.canvas import Canvas
+from arcade_kit.canvas import Canvas, cell_width
 
+from .classic import BLACK, COLORS, FONT
 from .glyphs import TILE_COLORS, Glyphs
 from .levels import KINDS, LEVELS
 from .rules import Battle, Direction
@@ -72,6 +73,17 @@ class App(Canvas):
         self.mode = "title"
         self.menu_index = 0
 
+    def _style(self, role="text", bold=False):
+        color, basic = COLORS.get(role, COLORS["text"])
+        return self.theme.custom(color, BLACK, (basic, curses.COLOR_BLACK), bold)
+
+    def setup(self):
+        super().setup()
+        self.screen.bkgdset(" ", self._style())
+
+    def text(self, y, x, value, role="text", bold=False):
+        self.paint(y, x, value, self._style(role, bold))
+
     def open_levels(self):
         self.return_mode = self.mode
         self.mode = "select"
@@ -84,7 +96,7 @@ class App(Canvas):
 
     def menu_items(self):
         if self.mode == "title":
-            items = [("开始新战役", "new")]
+            items = [("1 PLAYER  单人战役", "new")]
             if self.has_campaign:
                 items.append(("继续当前战役", "resume"))
             return items + [("选择关卡", "select"), ("操作说明", "help"), (self.leave, "quit")]
@@ -257,9 +269,25 @@ class App(Canvas):
         height, width = self.screen.getmaxyx()
         return max(0, (width - 80) // 2), max(0, (height - 24) // 2)
 
-    def dialog_in_field(self, title, lines):
+    def draw_cursor(self, y, x, tall=True):
+        if self.rich and tall:
+            for row, text in enumerate(("▟▄▙━", "▜▀▛ ")):
+                self.text(y + row, x, text, "player", True)
+        else:
+            self.text(y, x, self.glyphs.tank(Direction.RIGHT, True)[0], "player", True)
+
+    def draw_page(self, title, lines):
         ox, oy = self.origin()
-        self.dialog(oy + (24 - len(lines) * 2 - 3) // 2, ox + 4, title, lines)
+        self.text(oy, ox + 2, "TANK BATTLE", "muted")
+        self.text(oy + 2, ox + (80 - cell_width(title)) // 2, title, "text", True)
+        width = min(68, max(map(cell_width, lines), default=0))
+        x = ox + (80 - width) // 2
+        first = max(4, (24 - len(lines) * 2) // 2)
+        for i, line in enumerate(lines):
+            if line.startswith("> "):
+                self.draw_cursor(oy + first + i * 2, x - 4)
+                line = "  " + line[2:]
+            self.text(oy + first + i * 2, x, line)
 
     @property
     def glyphs(self):
@@ -271,7 +299,7 @@ class App(Canvas):
             foreground, background, basic = TILE_COLORS[role]
             style = self.theme.custom(foreground, background, basic, role in ("tile.base", "tile.shield"))
         else:
-            style = self.theme.style(role, "field", role in ("player", "enemy"))
+            style = self._style(role, role in ("player", "enemy"))
         self.paint(y, x, text, style)
 
     def _draw(self):
@@ -284,14 +312,16 @@ class App(Canvas):
             self.text(5, 1, f"放大窗口后按 P 继续；Q {self.leave}。")
             return
         ox, oy = self.origin()
-        self.text(oy, ox + 2, "TANK BATTLE", "accent", True)
-        self.text(oy, ox + 15, "坦克大战 · 经典 35 关", "text")
-        self.text(oy + 1, ox + 2, f"最高分 {self.best:06d}", "muted")
-        self.draw_battle(ox, oy)
-        if self.mode == "select":
+        if self.mode == "title":
+            self.draw_title()
+        elif self.mode == "playing":
+            self.text(oy, ox + 2, "TANK BATTLE", "text", True)
+            self.text(oy + 1, ox + 2, f"1P-{self.game.score:06d}     HI-{self.best:06d}")
+            self.draw_battle(ox, oy)
+        elif self.mode == "select":
             self.draw_levels()
         elif self.mode == "help":
-            self.dialog_in_field("出击手册", [
+            self.draw_page("出击手册", [
                 "WASD / 方向键：移动，空格 / J：开炮",
                 "P / Esc：暂停菜单，F：切换自动连射",
                 "每关消灭 20 辆敌军；基地失守即失败。",
@@ -303,18 +333,46 @@ class App(Canvas):
         elif self.mode == "confirm":
             title = "确认退出" if self.pending == "quit" else "确认重新开始"
             message = "结束游戏？已结算的最高分会保留。" if self.pending == "quit" else "放弃当前关卡进度并重新开始？"
-            self.dialog_in_field(title, [message, "Enter / Y 确认    Esc / N 取消"])
-        elif self.mode in ("title", "pause", "result"):
+            self.draw_page(title, [message, "Enter / Y 确认    Esc / N 取消"])
+        elif self.mode in ("pause", "result"):
             self.draw_menu()
 
+    def draw_title(self):
+        height, width = self.screen.getmaxyx()
+        compact = height < 30
+        page_height = 24 if compact else 28
+        oy = (height - page_height) // 2
+        record = f"HI-{self.best:06d}"
+        self.text(oy, (width - cell_width(record)) // 2, record)
+        for word, top in (("BATTLE", 2), ("CITY", 8)):
+            left = (width - (len(word) * 6 - 1) * 2) // 2
+            for row in range(5):
+                for letter, char in enumerate(word):
+                    for column, pixel in enumerate(FONT[char][row]):
+                        if pixel != "1":
+                            continue
+                        color = (200, 80, 32) if (row + column) % 2 else (248, 144, 64)
+                        style = self.theme.custom(color, BLACK, (curses.COLOR_YELLOW, curses.COLOR_BLACK), True)
+                        self.paint(oy + top + row, left + (letter * 6 + column) * 2,
+                                   "██" if self.rich else "##", style)
+        items = self.menu_items()
+        menu_width = max(cell_width(label) for label, _ in items)
+        left = (width - menu_width) // 2
+        for i, (label, _) in enumerate(items):
+            y = oy + 16 + i * (1 if compact else 2)
+            if i == self.menu_index:
+                self.draw_cursor(y, left - 6, tall=not compact)
+            self.text(y, left, label, "text", i == self.menu_index)
+        self.text(oy + page_height - 2, (width - 11) // 2, "TANK BATTLE", "muted")
+        hint = "W S / 方向键选择   Enter / J 确认   经典 35 关"
+        self.text(oy + page_height - 1, (width - cell_width(hint)) // 2, hint, "muted")
+
     def draw_menu(self):
-        title = {"title": "BATTLE CITY / 主菜单", "pause": "暂停 / PAUSED", "result": "战斗结束"}[self.mode]
+        title = {"pause": "暂停 / PAUSED", "result": "战斗结束"}[self.mode]
         if self.mode == "pause":
             title += f" · 第 {self.game.level_number:02} 关"
         lines = []
-        if self.mode == "title":
-            lines = ["完整经典关卡集 · 单人战役"]
-        elif self.mode == "result":
+        if self.mode == "result":
             if self.game.result == "win":
                 title = "全部 35 关完成" if self.game.level_number == len(LEVELS) else "任务完成"
             counts = self.game.kill_counts
@@ -324,7 +382,7 @@ class App(Canvas):
         lines += [f"{'>' if index == self.menu_index else ' '} {label}"
                   for index, (label, _) in enumerate(self.menu_items())]
         lines += ["W S / 方向键选择，Enter / J 确认"]
-        self.dialog_in_field(title, lines)
+        self.draw_page(title, lines)
         if self.mode == "result":
             ox, oy = self.origin()
             feedback = ("记录保存失败，本局仍可继续操作。" if self.save_failed
@@ -337,11 +395,19 @@ class App(Canvas):
         lines = [f"{'>' if index == self.selection else ' '} {index + 1:02}  {level.name}    敌军 {level.target}"
                  for index, level in enumerate(LEVELS) if first <= index < first + 5]
         lines += [LEVELS[self.selection].description, "方向键选择，PgUp/PgDn 翻页，Enter 开始，Esc 返回"]
-        self.dialog_in_field(f"选择关卡 {self.selection + 1}/{len(LEVELS)}", lines)
+        self.draw_page(f"选择关卡 {self.selection + 1}/{len(LEVELS)}", lines)
 
     def draw_battle(self, ox, oy):
         game, glyphs = self.game, self.glyphs
-        self.box(oy + 3, ox + 2, 15, 54, fill=False)
+        # 灰色直角边框围住黑色战场，独立于标题和菜单画面。
+        frame_style = self.theme.custom((128, 128, 128), (128, 128, 128),
+                                        (curses.COLOR_WHITE, curses.COLOR_WHITE))
+        for row in range(15):
+            if row in (0, 14):
+                self.paint(oy + 3 + row, ox + 2, " " * 54 if self.theme.level != "mono" else "=" * 54, frame_style)
+            else:
+                self.paint(oy + 3 + row, ox + 2, " " if self.theme.level != "mono" else "|", frame_style)
+                self.paint(oy + 3 + row, ox + 55, " " if self.theme.level != "mono" else "|", frame_style)
         fx, fy = ox + 3, oy + 4
         for y in range(0, game.HEIGHT, 4):
             for x in range(0, game.WIDTH, 2):
@@ -366,25 +432,26 @@ class App(Canvas):
         for x, y, life in game.effects:
             self.cell(fy + y // 4, fx + x, ("*", "warning"))
         self.text(oy + 19, ox + 3, f"STAGE {game.level_number:02}/35  {game.level.name}", "accent")
-        self.text(oy + 20, ox + 3, "砖 #  钢 []  水 ~  森林 F  冰面 =", "muted")
-        self.text(oy + 21, ox + 3, "* 升级  + 加命  H 护盾  T 冻结  G 炸弹  S 护城", "muted")
+        effects = [("护盾", game.shield), ("冻结", game.freeze), ("护城", game.fortify)]
+        status = [f"{label} {math.ceil(seconds)}s" for label, seconds in effects if seconds > 0]
+        if game.auto_fire:
+            status.append("连射 ON")
+        self.text(oy + 21, ox + 3, "   ".join(status), "muted")
         self.draw_hud(game, glyphs, ox + 60, oy)
         self.hints(oy + 23, ox + 2, (("WASD", "移动"), ("空格/J", "射击"), ("P", "菜单"),
                                      ("F", "连射"), ("L", "选关"), ("?", "帮助"), ("Q", "退出")))
 
     def draw_hud(self, game, glyphs, side, oy):
         self.text(oy + 3, side, "敌军", "muted")
-        self.text(oy + 4, side, f"剩余 {game.TARGET - game.kills:02}", "enemy", True)
+        self.text(oy + 4, side, f"剩余 {game.TARGET - game.kills:02}", "text", True)
         for index in range(game.TARGET):
-            row, column = divmod(index, 5)
-            self.text(oy + 6 + row, side + column * 3, *glyphs.icon(False, index < game.TARGET - game.kills))
-        rows = (("生命", str(game.lives), "player"), ("总分", f"{game.score:06d}", "text"),
-                ("升级", f"{game.power}/3", "accent"), ("护盾", f"{math.ceil(game.shield)}s", "player"),
-                ("冻结", f"{math.ceil(game.freeze)}s", "accent"), ("护城", f"{math.ceil(game.fortify)}s", "accent"),
-                ("连射", "ON" if game.auto_fire else "OFF", "muted"))
+            row, column = divmod(index, 2)
+            self.text(oy + 5 + row, side + column * 4, *glyphs.icon(False, index < game.TARGET - game.kills))
+        rows = (("1P", str(game.lives), "player"), ("SCORE", f"{game.score:06d}", "text"),
+                ("POWER", f"{game.power}/3", "player"))
         for offset, (label, value, role) in enumerate(rows):
-            self.text(oy + 11 + offset, side, label, "muted")
-            self.text(oy + 11 + offset, side + 6, value, role)
+            self.text(oy + 16 + offset, side, label, "muted")
+            self.text(oy + 16 + offset, side + 7, value, role)
         lost = game.reason == "HQ was destroyed."
         self.text(oy + 19, side, "HQ 失守" if lost else "HQ 完好", "enemy" if lost else "player")
         self.text(oy + 20, side, f"{int(game.elapsed) // 60:02}:{int(game.elapsed) % 60:02}", "muted")

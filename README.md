@@ -79,16 +79,16 @@ Linux 遵循 `XDG_DATA_HOME` / `XDG_STATE_HOME` / `XDG_CACHE_HOME`；macOS 上�
 - `templates/minimal-game/`：只用标准库的最小游戏样例。
 - `docs/`：[设计文档](docs/README.md)，包含架构、接入、安装管理与贡献规范。
 
-### Grok Build 风格渲染
+### 终端界面与渲染
 
-平台大厅与坦克大战使用同一套 GrokNight 配色。大厅由 Go 渲染：根据 `COLORTERM`、`TERM` 选择 24 位真彩色、256 色、8／16 色或单色（`NO_COLOR`）；`ARCADE_ASCII=1` 或 `TERM=linux` 时线条改用 ASCII。每帧在内存中完整合成，Bubble Tea 只重写变化的行，静止画面不输出任何数据。下面几条描述坦克大战（Python / curses）：
+平台大厅使用 GrokNight 配色，坦克大战采用经典 FC 风格。大厅由 Go 渲染：根据 `COLORTERM`、`TERM` 选择 24 位真彩色、256 色、8／16 色或单色（`NO_COLOR`）；`ARCADE_ASCII=1` 或 `TERM=linux` 时线条改用 ASCII。每帧在内存中完整合成，Bubble Tea 只重写变化的行，静止画面不输出任何数据。下面几条描述坦克大战（Python / curses）：
 
-- **统一主题**：参考 [GrokNight](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager-render/src/theme/groknight.rs)，使用中性深灰背景和浮起一层的面板；蓝色用于界面提示，绿／红区分敌我，砖墙和钢墙使用低饱和色。
+- **经典界面**：黑底、橙色砖块字 `BATTLE CITY` 标题和黄色坦克选择光标；标题、选关、暂停、结算使用独立画面。战场采用灰色直角边框，玩家为黄色、敌军为灰白色，右侧用两列小坦克表示剩余敌军。标题字形由终端字符绘制，无需图片协议。
 - **块字符战场**：52 × 52 子格地图压缩到 13 行，彩色终端用 `▟▙`、`━█` 显示坦克，用 Braille 点保留砖墙缺口，并区分钢墙、水域、森林与冰面。若字体缺少块字符，或终端把歧义宽度字符显示为双宽，请用 `ARCADE_ASCII=1 ./play.sh` 切换为 ASCII 界面；Linux 控制台自动使用 ASCII。
 - **颜色降级**：根据 curses 实际报告的能力，将 RGB 主题映射至 256 色或基础 8／16 色。支持 `NO_COLOR=1`；单色或色对不足时自动改用 ASCII 符号，以 `P`、`!`、地形字符和粗体区分内容。当前 curses 后端不直接输出 24 位 truecolor，不修改终端全局调色板。
 - **只提交变化**：比较画面中可见的状态；大厅、暂停、帮助等静止画面不重复重绘。画面变化时在内存中完整合成，再通过 curses 双缓冲差分更新终端；动画上限为 30 FPS，游戏模拟仍按独立的固定步长推进。
 - **整帧同步**：参考 Grok Build 的 [draw_frame](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager-render/src/render/draw.rs)，在识别到 Ghostty、WezTerm、Kitty、foot 时用 synchronized output 包裹提交；未知终端和 Apple Terminal 使用常规差分输出，tmux／screen 内禁用额外包裹。可用 `ARCADE_SYNC=0` 关闭，或在确认支持的直连终端中用 `ARCADE_SYNC=1` 启用。
-- **实现边界**：坦克大战借鉴主题与提交逻辑，仍使用 Python / curses。输出串行完成，不累积待渲染帧；尚未移植 Grok Build 的异步 writer、图片覆盖层和长历史虚拟化，慢速终端写入仍可能阻塞主循环。
+- **实现边界**：坦克大战借鉴 Grok Build 的提交逻辑，使用独立的游戏配色与 Python / curses。输出串行完成，不累积待渲染帧；尚未移植 Grok Build 的异步 writer、图片覆盖层和长历史虚拟化，慢速终端写入仍可能阻塞主循环。
 
 ```sh
 (cd platform && go vet ./... && go test ./...)

@@ -36,7 +36,8 @@ class TankAppTests(unittest.TestCase):
         self.app.update(100)
         self.assertEqual(self.app.game.elapsed, 0)
         self.app.draw()
-        self.assertIn(" BATTLE CITY / 主菜单 ", self.screen.writes)
+        self.assertIn("1 PLAYER  单人战役", self.screen.writes)
+        self.assertFalse(any("剩余" in line or "HQ 完好" in line or "STAGE" in line for line in self.screen.writes))
         self.assertTrue(any("退出并返回大厅" in line for line in self.screen.writes))
         standalone = App(self.screen, {})
         standalone.draw()
@@ -122,7 +123,8 @@ class TankAppTests(unittest.TestCase):
         self.assertEqual(self.app.selection, 34)
         self.app.handle(curses.KEY_DOWN)
         self.app.draw()
-        self.assertIn("> 35  经典关卡 35    敌军 20", self.screen.writes)
+        self.assertIn("  35  经典关卡 35    敌军 20", self.screen.writes)
+        self.assertIn(">P", self.screen.writes)
         self.app.handle(curses.KEY_PPAGE)
         self.assertEqual(self.app.selection, 29)
         self.app.handle(curses.KEY_HOME)
@@ -199,7 +201,7 @@ class TankAppTests(unittest.TestCase):
             if number < 35:
                 self.app.handle(10)
             else:
-                self.assertIn(" 全部 35 关完成 ", self.screen.writes)
+                self.assertIn("全部 35 关完成", self.screen.writes)
                 self.app.next_level()
                 self.assertIs(self.app.game, game)
                 self.app.handle(10)
@@ -263,6 +265,8 @@ class TankAppTests(unittest.TestCase):
                             self.app.game.result = "win" if mode == "result" else None
                             self.app._draw()
                             self.assertIn("TANK BATTLE", self.screen.writes)
+                            self.assertEqual(any(line.startswith("STAGE ") for line in self.screen.writes),
+                                             mode == "playing")
 
     def test_forest_hides_enemy_and_armor_bonus_and_bullets_render(self):
         self.app.start(1)
